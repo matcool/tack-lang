@@ -42,6 +42,8 @@ public:
 	inline void next_char(char c) {
 		if (c == '\n')
 			new_line();
+		else if (c == '\t')
+			m_column += 4; // sorry for using the correct size
 		else
 			++m_column;
 	}

@@ -181,7 +181,13 @@ void Parser::error_at_token(const Token& token, const std::string_view& msg) {
 				break;
 			++counter;
 		}
-		print("{}\n", line);
+		for (const auto c : line) {
+			if (c == '\t')
+				print("    ");
+			else
+				print("{}", c);
+		}
+		print("\n");
 		for (size_t i = 1; i < token.column; ++i)
 			print(' ');
 		print("^ here\n");
@@ -307,22 +313,43 @@ Expression Parser::parse_expression(ArrayView<Token> tokens, const Type infer_ty
 		return exp;
 	} else if (tokens[0].type == TokenType::Keyword) {
 		if (tokens[0].data == "let") {
-			if (tokens.size() < 4) error_at_token(tokens[0], "expected stuff here you know");
-			const auto name_token = expect_token_type(tokens[1], TokenType::Identifier, "Expected identifier");
-			// TODO: infer type from rhs
-			expect_token_type(tokens[2], TokenType::TypeIndicator, "Expected type indicator");
-			// TODO: proper type parsing
-			const auto type_token = expect_token_type(tokens[3], TokenType::Identifier, "Expected type");
+			ArrayStream rest = tokens.slice(1);
+			const auto variable = parse_var_decl(rest);
+
+			if (rest.size())
+				error_at_token(rest.get(), "Unexpected token");
 			
 			Expression exp(ExpressionType::Declaration);
-			exp.prefer_type = Type { type_token.data };
-			exp.data = Expression::DeclarationData { Variable { exp.prefer_type, name_token.data } };
+			exp.prefer_type = variable.type;
+			exp.data = Expression::DeclarationData { variable };
 			return exp;
 		} else {
 			error_at_token(tokens[0], "idk what this is");
 		}
 	} else {
 		error_at_token(tokens[0], "idk what this expression is");
+	}
+}
+
+void print_expression(const Expression& exp, const int depth = 0) {
+	for (int i = 0; i < depth; ++i)
+		print("  ");
+
+	print("{} ", enum_name(exp.type));
+	if (exp.type == ExpressionType::Literal) {
+		const auto& value = std::get<Expression::LiteralData>(exp.data).value;
+		std::visit([](const auto& value) {
+			print("({}) ", value);
+		}, value);
+	} else if (exp.type == ExpressionType::Declaration) {
+		const auto& var = std::get<Expression::DeclarationData>(exp.data).var;
+		print("({}: {}) ", var.name, var.type.name);
+	} else if (exp.type == ExpressionType::Variable) {
+		print("({}) ", std::get<Expression::VariableData>(exp.data).name);
+	}
+	print("\n");
+	for (auto& child : exp.children) {
+		print_expression(child, depth + 1);
 	}
 }
 
@@ -356,14 +383,11 @@ int main(int argc, char** argv) {
 	print("File parsed\n");
 
 	for (auto& function : parser.m_functions) {
-		print("Function {} -> {}\n", function.name, function.return_type.name);
+		print("Function {}: {}\n", function.name, function.return_type.name);
 		for (auto& statement : function.statements) {
 			print("  {}\n", enum_name(statement.type));
 			for (auto& expression : statement.expressions) {
-				print("    {}\n", enum_name(expression.type));
-				for (auto& exp : expression.children) {
-					print("      {}\n", enum_name(exp.type));
-				}
+				print_expression(expression, 2);
 			}
 		}
 	}
