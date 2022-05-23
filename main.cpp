@@ -34,7 +34,6 @@ inline const char* enum_name(const TokenType& t) {
 inline const char* enum_name(const StatementType& t) {
 	switch (t) {
 		case StatementType::Expression: return "Expression";
-		case StatementType::Assignment: return "Assignment";
 		case StatementType::Return: return "Return";
 	}
 	return "";
@@ -45,6 +44,7 @@ inline const char* enum_name(const ExpressionType& t) {
 		case ExpressionType::Literal: return "Literal";
 		case ExpressionType::Declaration: return "Declaration";
 		case ExpressionType::Variable: return "Variable";
+		case ExpressionType::Assignment: return "Assignment";
 	}
 	return "";
 }
@@ -137,7 +137,7 @@ std::optional<Token> Lexer::get_token() {
 				str.push_back(c);
 				while (m_stream.good()) {
 					const auto next = static_cast<char>(m_stream.peek());
-					if (next >= 'a' && next <= 'z' || next >= 'A' && next <= 'Z' || next >= '0' && next <= '9') {
+					if ((next >= 'a' && next <= 'z') || (next >= 'A' && next <= 'Z') || (next >= '0' && next <= '9')) {
 						str.push_back(next);
 						next_char(next);
 						m_stream.get(c);
@@ -159,7 +159,6 @@ std::vector<Token> Lexer::get_tokens() {
 	while (m_stream.good()) {
 		auto token = get_token();
 		if (token) {
-			print("got token {}\n", *token);
 			output.push_back(*token);
 		}
 	}
@@ -268,26 +267,63 @@ Statement Parser::parse_statement(ArrayView<Token> tokens, Function* parent) {
 	auto& first = tokens[0];
 	if (first.type == TokenType::Keyword && first.data == "return") {
 		assert(parent, "Return statement cannot appear outside function");
-		auto i = tokens.find([](Token& token) { return token.type == TokenType::Semicolon; });
-		assert(i.has_value(), "No semicolon found after return");
 		return Statement {
 			StatementType::Return,
-			{ parse_expression(tokens.slice(1, *i), parent->return_type) }
+			{ parse_expression(tokens.slice(1, tokens.size() - 1), parent->return_type) }
 		};
-	} else if (auto pos = tokens.find([](Token& token) { return token.type == TokenType::Assign; }); pos) {
-		
 	} else {
-		assert(false, "Fuck!");
+		const auto exp = parse_expression(tokens.slice(0, tokens.size() - 1), Type { "void" });
+		return Statement {
+			StatementType::Expression,
+			{ exp }
+		};
 	}
 }
 
 Expression Parser::parse_expression(ArrayView<Token> tokens, const Type infer_type) {
-	assert(tokens.size() == 1, "im silly");
-	assert(tokens[0].type == TokenType::Number, "im silly");
-	Expression exp(ExpressionType::Literal);
-	exp.prefer_type = infer_type;
-	exp.data = Expression::LiteralData { std::stoi(tokens[0].data) };
-	return exp;
+	if (tokens.size() == 0)
+		assert(false, "Expected expression.. somewhere");
+
+	if (tokens.size() == 1) {
+		const auto token = tokens[0];
+		if (token.type == TokenType::Number) {
+			Expression exp(ExpressionType::Literal);
+			exp.prefer_type = infer_type;
+			exp.data = Expression::LiteralData { std::stoi(token.data) };
+			return exp;
+		} else if (token.type == TokenType::Identifier) {
+			Expression exp(ExpressionType::Variable);
+			exp.data = Expression::VariableData { token.data };
+			return exp;
+		} else {
+			error_at_token(token, "Fuck!");
+		}
+	} else if (auto pos = tokens.find([](const auto& token) { return token.type == TokenType::Assign; }); pos) {
+		const auto rhs = parse_expression(tokens.slice(*pos + 1), Type { "void" });
+		const auto lhs = parse_expression(tokens.slice(0, *pos), rhs.prefer_type);
+		Expression exp(ExpressionType::Assignment);
+		// exp.prefer_type = rhs.prefer_type;
+		exp.children = { lhs, rhs };
+		return exp;
+	} else if (tokens[0].type == TokenType::Keyword) {
+		if (tokens[0].data == "let") {
+			if (tokens.size() < 4) error_at_token(tokens[0], "expected stuff here you know");
+			const auto name_token = expect_token_type(tokens[1], TokenType::Identifier, "Expected identifier");
+			// TODO: infer type from rhs
+			expect_token_type(tokens[2], TokenType::TypeIndicator, "Expected type indicator");
+			// TODO: proper type parsing
+			const auto type_token = expect_token_type(tokens[3], TokenType::Identifier, "Expected type");
+			
+			Expression exp(ExpressionType::Declaration);
+			exp.prefer_type = Type { type_token.data };
+			exp.data = Expression::DeclarationData { Variable { exp.prefer_type, name_token.data } };
+			return exp;
+		} else {
+			error_at_token(tokens[0], "idk what this is");
+		}
+	} else {
+		error_at_token(tokens[0], "idk what this expression is");
+	}
 }
 
 int main(int argc, char** argv) {
@@ -298,19 +334,13 @@ int main(int argc, char** argv) {
 
 			"Usage: {} input [output]\n\n"
 			
-			"  input - input file to compile\n"
-			"  output - output llvm ir file. if not provided will use input but with the extension replaced with .ll\n",
+			"  input - input file to compile\n",
 			args[0]
 		);
 		return 1;
 	}
 
 	auto input_file = std::ifstream(args[1]);
-	const std::filesystem::path output_path = args.size() < 3 ? std::filesystem::path(args[1]).replace_extension(".ll") : args[2];
-	if (args.size() < 3 && std::filesystem::exists(output_path)) {
-		print("File {} already exists. To overwrite manually provide it as the output\n", output_path);
-		return 1;
-	}
 
 	Lexer lexer(input_file);
 	auto tokens = lexer.get_tokens();
@@ -331,6 +361,9 @@ int main(int argc, char** argv) {
 			print("  {}\n", enum_name(statement.type));
 			for (auto& expression : statement.expressions) {
 				print("    {}\n", enum_name(expression.type));
+				for (auto& exp : expression.children) {
+					print("      {}\n", enum_name(exp.type));
+				}
 			}
 		}
 	}

@@ -63,7 +63,8 @@ struct Variable {
 enum class ExpressionType {
 	Literal,
 	Declaration,
-	Variable
+	Variable,
+	Assignment,
 };
 
 struct Expression {
@@ -86,8 +87,7 @@ struct Expression {
 
 enum class StatementType {
 	Expression, // statement is just an expression
-	Assignment, // statement assigns an expression to another
-	Return      // statement returns an expression
+	Return,     // statement returns an expression
 };
 
 struct Statement {
