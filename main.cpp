@@ -27,6 +27,7 @@ inline const char* enum_name(const TokenType& t) {
 		case TokenType::Assign: return "Assign";
 		case TokenType::Comma: return "Comma";
 		case TokenType::Keyword: return "Keyword";
+		case TokenType::Operator: return "Operator";
 	}
 	return "";
 }
@@ -45,6 +46,16 @@ inline const char* enum_name(const ExpressionType& t) {
 		case ExpressionType::Declaration: return "Declaration";
 		case ExpressionType::Variable: return "Variable";
 		case ExpressionType::Assignment: return "Assignment";
+		case ExpressionType::Operator: return "Operator";
+	}
+	return "";
+}
+
+inline const char* enum_name(const OperatorType& t) {
+	switch (t) {
+		case OperatorType::Negation: return "Negation";
+		case OperatorType::Not: return "Not";
+		case OperatorType::Bitflip: return "Bitflip";
 	}
 	return "";
 }
@@ -131,6 +142,19 @@ std::optional<Token> Lexer::get_token() {
 
 				return ret(Token(TokenType::Number, str));
 			}
+			case '/': {
+				if (static_cast<char>(m_stream.peek()) == '/') {
+					std::string comment;
+					eat_until(comment, '\n');
+					return {};
+				} else {
+					assert(false, "idk whta this is");
+				}
+			}
+			case '-': return ret(Token(TokenType::Operator, "-"));
+			case '~': return ret(Token(TokenType::Operator, "~"));
+			case '!': return ret(Token(TokenType::Operator, "!"));
+			case '+': return ret(Token(TokenType::Operator, "+"));
 			default: {
 				// if (is_whitespace(c)) return TokenType::Unknown;
 				std::string str;
@@ -326,10 +350,92 @@ Expression Parser::parse_expression(ArrayView<Token> tokens, const Type infer_ty
 		} else {
 			error_at_token(tokens[0], "idk what this is");
 		}
+	} else if (tokens[0].type == TokenType::Operator) {
+		const auto& token = tokens[0];
+		// TODO: avoid repetition
+		if (token.data == "-") {
+			const auto child = parse_expression(tokens.slice(1), infer_type);
+			Expression exp(ExpressionType::Operator);
+			exp.data = Expression::OperatorData { OperatorType::Negation };
+			exp.children.push_back(child);
+			return exp;
+		} else if (token.data == "~") {
+			const auto child = parse_expression(tokens.slice(1), infer_type);
+			Expression exp(ExpressionType::Operator);
+			exp.data = Expression::OperatorData { OperatorType::Bitflip };
+			exp.children.push_back(child);
+			return exp;
+		} else if (token.data == "!") {
+			const auto child = parse_expression(tokens.slice(1), infer_type);
+			Expression exp(ExpressionType::Operator);
+			exp.data = Expression::OperatorData { OperatorType::Not };
+			exp.children.push_back(child);
+			return exp;
+		} else {
+			error_at_token(token, "idk what this operator is");
+		}
 	} else {
 		error_at_token(tokens[0], "idk what this expression is");
 	}
 }
+
+
+void Compiler::compile() {
+	for (auto& function : m_parser.m_functions) {
+		compile_function(function);
+	}
+}
+
+void Compiler::compile_function(Function& function) {
+	write("{}:", function.name);
+	// write("push ebp");
+	// write("mov ebp, esp");
+	for (auto& statement : function.statements) {
+		compile_statement(statement);
+	}
+	// write("mov esp, ebp");
+	// write("pop ebp");
+	// write("ret");
+}
+
+void Compiler::compile_statement(Statement& statement) {
+	if (statement.type == StatementType::Return) {
+		// how do i tell where compile_expression to "output" to
+		for (auto& expression : statement.expressions) {
+			compile_expression(expression);
+		}
+		write("ret");
+	} else {
+		assert(false, "unimplemented");
+	}
+}
+
+void Compiler::compile_expression(Expression& exp) {
+	if (exp.type == ExpressionType::Literal) {
+		// the
+		const auto value = std::get<int>(std::get<Expression::LiteralData>(exp.data).value);
+		write("mov eax, {}", value);
+	} else if (exp.type == ExpressionType::Operator) {
+		const auto& data = std::get<Expression::OperatorData>(exp.data);
+		if (data.op_type == OperatorType::Negation) {
+			compile_expression(exp.children[0]);
+			write("neg eax");
+		} else if (data.op_type == OperatorType::Bitflip) {
+			compile_expression(exp.children[0]);
+			write("not eax");
+		} else if (data.op_type == OperatorType::Not) {
+			compile_expression(exp.children[0]);
+			write("cmp eax, 0");
+			write("mov eax, 0");
+			write("sete al");
+		} else {
+			assert(false, "unimplemented");
+		}
+	} else {
+		assert(false, "unimplemented");
+	}
+}
+
 
 void print_expression(const Expression& exp, const int depth = 0) {
 	for (int i = 0; i < depth; ++i)
@@ -346,6 +452,8 @@ void print_expression(const Expression& exp, const int depth = 0) {
 		print("({}: {}) ", var.name, var.type.name);
 	} else if (exp.type == ExpressionType::Variable) {
 		print("({}) ", std::get<Expression::VariableData>(exp.data).name);
+	} else if (exp.type == ExpressionType::Operator) {
+		print("({}) ", enum_name(std::get<Expression::OperatorData>(exp.data).op_type));
 	}
 	print("\n");
 	for (auto& child : exp.children) {
@@ -391,6 +499,13 @@ int main(int argc, char** argv) {
 			}
 		}
 	}
+
+	std::stringstream stream;
+	Compiler compiler(stream, parser);
+	compiler.compile();
+
+	print("Compiler finished\n");
+	print("{}\n", stream.str());
 
 	return 0;
 }

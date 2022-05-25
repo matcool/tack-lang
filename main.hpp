@@ -17,7 +17,8 @@ enum class TokenType {
 	Identifier,
 	Assign,
 	Comma,
-	Keyword
+	Keyword,
+	Operator,
 };
 
 struct Token {
@@ -67,10 +68,18 @@ enum class ExpressionType {
 	Declaration,
 	Variable,
 	Assignment,
+	Operator,
+};
+
+enum class OperatorType {
+	Negation,
+	Not,
+	Bitflip,
 };
 
 struct Expression {
 	ExpressionType type;
+	// TODO: have an specific value for this, instead of just void
 	Type prefer_type = Type { "void" };
 	std::vector<Expression> children;
 	// TODO: consider dynamic polymorphism instead of this
@@ -83,7 +92,10 @@ struct Expression {
 	struct LiteralData {
 		std::variant<int, std::string> value;
 	};
-	std::variant<bool, DeclarationData, VariableData, LiteralData> data;
+	struct OperatorData {
+		OperatorType op_type;
+	};
+	std::variant<bool, DeclarationData, VariableData, LiteralData, OperatorData> data;
 	Expression(ExpressionType type) : type(type) {}
 };
 
@@ -131,28 +143,20 @@ public:
 
 class Compiler {
 public:
-	struct Identifier {
-		size_t n;
-		Type type;
-	};
-	// resets on each function
-	size_t m_id_counter = 0;
 	std::ostream& m_stream;
 	Parser& m_parser;
 
 	Compiler(std::ostream& output, Parser& parser) : m_stream(output), m_parser(parser) {}
 
-	Identifier reserve_var();
-	Identifier allocate_var();
-
 	template <class... Args>
-	void write_inst(const std::string_view& format, Args&&... args) {
+	void write(const std::string_view& format, Args&&... args) {
 		format_to(m_stream, format, args...);
 		m_stream << '\n';
 	}
 
 	void compile_expression(Expression&);
 	void compile_statement(Statement&);
+	void compile_function(Function&);
 
 	void compile();
 
