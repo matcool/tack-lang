@@ -72,9 +72,15 @@ enum class ExpressionType {
 };
 
 enum class OperatorType {
+	// Unary
 	Negation,
 	Not,
 	Bitflip,
+	// Binary
+	Addition,
+	Subtraction,
+	Multiplication,
+	Division,
 };
 
 struct Expression {

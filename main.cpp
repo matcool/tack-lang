@@ -56,6 +56,10 @@ inline const char* enum_name(const OperatorType& t) {
 		case OperatorType::Negation: return "Negation";
 		case OperatorType::Not: return "Not";
 		case OperatorType::Bitflip: return "Bitflip";
+		case OperatorType::Addition: return "Addition";
+		case OperatorType::Subtraction: return "Subtraction";
+		case OperatorType::Multiplication: return "Multiplication";
+		case OperatorType::Division: return "Division";
 	}
 	return "";
 }
@@ -142,19 +146,19 @@ std::optional<Token> Lexer::get_token() {
 
 				return ret(Token(TokenType::Number, str));
 			}
+			case '-': return ret(Token(TokenType::Operator, "-"));
+			case '~': return ret(Token(TokenType::Operator, "~"));
+			case '!': return ret(Token(TokenType::Operator, "!"));
+			case '+': return ret(Token(TokenType::Operator, "+"));
+			case '*': return ret(Token(TokenType::Operator, "*"));
 			case '/': {
 				if (static_cast<char>(m_stream.peek()) == '/') {
 					std::string comment;
 					eat_until(comment, '\n');
 					return {};
-				} else {
-					assert(false, "idk whta this is");
-				}
+				} else
+					return ret(Token(TokenType::Operator, "/"));
 			}
-			case '-': return ret(Token(TokenType::Operator, "-"));
-			case '~': return ret(Token(TokenType::Operator, "~"));
-			case '!': return ret(Token(TokenType::Operator, "!"));
-			case '+': return ret(Token(TokenType::Operator, "+"));
 			default: {
 				// if (is_whitespace(c)) return TokenType::Unknown;
 				std::string str;
@@ -349,7 +353,7 @@ Expression Parser::parse_expression(ArrayView<Token> tokens, const Type infer_ty
 			return exp;
 		} else {
 			error_at_token(tokens[0], "idk what this is");
-		}
+		}		
 	} else if (tokens[0].type == TokenType::Operator) {
 		const auto& token = tokens[0];
 		// TODO: avoid repetition
@@ -374,6 +378,24 @@ Expression Parser::parse_expression(ArrayView<Token> tokens, const Type infer_ty
 		} else {
 			error_at_token(token, "idk what this operator is");
 		}
+	} else if (const auto pos = tokens.find([](const auto& token) { return token.type == TokenType::Operator; }); pos) {
+		const auto& token = tokens[*pos];
+		
+		OperatorType type = OperatorType::Addition;
+		if (token.data == "+") type = OperatorType::Addition;
+		else if (token.data == "-") type = OperatorType::Subtraction;
+		else if (token.data == "*") type = OperatorType::Multiplication;
+		else if (token.data == "/") type = OperatorType::Division;
+		else error_at_token(token, "implement me uwu");
+
+		const auto lhs = parse_expression(tokens.slice(0, *pos), infer_type);
+		const auto rhs = parse_expression(tokens.slice(*pos + 1), infer_type);
+		
+		Expression exp(ExpressionType::Operator);
+		exp.data = Expression::OperatorData { type };
+		exp.children.push_back(lhs);
+		exp.children.push_back(rhs);
+		return exp;
 	} else {
 		error_at_token(tokens[0], "idk what this expression is");
 	}
@@ -428,6 +450,24 @@ void Compiler::compile_expression(Expression& exp) {
 			write("cmp eax, 0");
 			write("mov eax, 0");
 			write("sete al");
+		} else if (data.op_type == OperatorType::Addition) {
+			compile_expression(exp.children[0]);
+			write("push eax");
+			compile_expression(exp.children[1]);
+			write("pop ecx");
+			write("add eax, ecx");
+		} else if (data.op_type == OperatorType::Subtraction) {
+			compile_expression(exp.children[0]);
+			write("push eax");
+			compile_expression(exp.children[1]);
+			write("pop ecx");
+			write("sub eax, ecx");
+		} else if (data.op_type == OperatorType::Multiplication) {
+			compile_expression(exp.children[0]);
+			write("push eax");
+			compile_expression(exp.children[1]);
+			write("pop ecx");
+			write("imul eax, ecx");
 		} else {
 			assert(false, "unimplemented");
 		}

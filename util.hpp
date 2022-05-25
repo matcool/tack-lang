@@ -47,6 +47,13 @@ public:
 			if (predicate(m_data[i])) return i;
 		return {};
 	}
+
+	template <class P>
+	std::optional<size_t> rfind(P&& predicate) {
+		for (size_t i = m_size; i; --i)
+			if (predicate(m_data[i - 1])) return i - 1;
+		return {};
+	}
 };
 
 template <class T>
