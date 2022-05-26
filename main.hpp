@@ -134,17 +134,18 @@ public:
 	Scope m_global_scope;
 	std::vector<Function> m_functions;
 	std::string m_file_name;
+	ArrayStream<Token> m_tokens;
 
-	Parser() {}
-	Parser(const std::string_view& file_name);
+	// Parser() {}
+	Parser(const std::string_view& file_name, ArrayStream<Token> tokens);
 
-	Variable parse_var_decl(ArrayStream<Token>& tokens);
-	void parse_function(Function& function, ArrayStream<Token>& tokens);
-	Statement parse_statement(ArrayView<Token> tokens, Function* parent);
-	Expression parse_expression(ArrayView<Token> tokens, const Type);
+	Variable parse_var_decl();
+	void parse_function(Function& function);
+	Statement parse_statement(Function* parent);
+	Expression parse_expression(const Type);
 	void error_at_token(const Token& token, const std::string_view& msg);
 	Token& expect_token_type(Token& token, TokenType type, const std::string_view& msg);
-	void parse(ArrayView<Token> tokens);
+	void parse();
 };
 
 class Compiler {

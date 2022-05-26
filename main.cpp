@@ -193,9 +193,9 @@ std::vector<Token> Lexer::get_tokens() {
 	return output;
 }
 
-Parser::Parser(const std::string_view& file_name) : m_file_name(file_name) {
-
-}
+Parser::Parser(const std::string_view& file_name, ArrayStream<Token> tokens)
+	: m_file_name(file_name),
+	m_tokens(tokens) {}
 
 void Parser::error_at_token(const Token& token, const std::string_view& msg) {
 	print("[error] {}", msg);
@@ -230,83 +230,75 @@ Token& Parser::expect_token_type(Token& token, TokenType type, const std::string
 	return token;
 }
 
-void Parser::parse(ArrayView<Token> tokens) {
-	ArrayStream stream(tokens);
-	while (stream.size()) {
-		auto& token = stream.get();
+void Parser::parse() {
+	while (m_tokens.size()) {
+		auto& token = m_tokens.get();
 		if (token.type == TokenType::Keyword && token.data == "fn") {
 			auto& function = m_functions.emplace_back();
-			function.name = expect_token_type(stream.get(), TokenType::Identifier, "Expected function name").data;
-			expect_token_type(stream.get(), TokenType::LeftParen, "Expected function args");
-			// auto rb = stream.view().find([](Token& token) { return token.type == TokenType::RightParen; });
+			function.name = expect_token_type(m_tokens.get(), TokenType::Identifier, "Expected function name").data;
+			expect_token_type(m_tokens.get(), TokenType::LeftParen, "Expected function args");
+			// auto rb = m_tokens.view().find([](Token& token) { return token.type == TokenType::RightParen; });
 			// if (!rb)
-			// 	error_at_token(stream.peek(), "Unclosed parenthesis");
+			// 	error_at_token(m_tokens.peek(), "Unclosed parenthesis");
 			
-			// ArrayStream arg_list_tokens(tokens.slice(i + 1, i + *rb));
-			while (stream.peek().type != TokenType::RightParen) {
-				function.arguments.push_back(parse_var_decl(stream));
-				auto& next = stream.peek();
+			// Arraym_tokens arg_list_tokens(tokens.slice(i + 1, i + *rb));
+			while (m_tokens.peek().type != TokenType::RightParen) {
+				function.arguments.push_back(parse_var_decl());
+				auto& next = m_tokens.peek();
 				if (next.type != TokenType::Comma && next.type != TokenType::RightParen)
 					error_at_token(next, "Expected comma");
 			}
-			stream.get();
+			m_tokens.get();
 
 			// TODO: default to void
-			expect_token_type(stream.get(), TokenType::TypeIndicator, "Expected type indicator");
+			expect_token_type(m_tokens.get(), TokenType::TypeIndicator, "Expected type indicator");
 
 			// TODO: properly parse types
-			auto type_token = expect_token_type(stream.get(), TokenType::Identifier, "Expected type");
+			auto type_token = expect_token_type(m_tokens.get(), TokenType::Identifier, "Expected type");
 			function.return_type = Type { type_token.data };
 			
-			expect_token_type(stream.get(), TokenType::LeftBracket, "Expected bracket");
+			expect_token_type(m_tokens.get(), TokenType::LeftBracket, "Expected bracket");
 
-			parse_function(function, stream);
+			parse_function(function);
 		} else {
 			assert(false, "Unimplemented token outside in global scope");
 		}
 	}
 }
 
-Variable Parser::parse_var_decl(ArrayStream<Token>& tokens) {
-	auto name_token = tokens.get();
+Variable Parser::parse_var_decl() {
+	auto name_token = m_tokens.get();
 	if (name_token.type != TokenType::Identifier)
 		error_at_token(name_token, "Expected variable name");
-	if (tokens.get().type != TokenType::TypeIndicator)
-		error_at_token(tokens.prev(), "Expected type indicator");
+	if (m_tokens.get().type != TokenType::TypeIndicator)
+		error_at_token(m_tokens.prev(), "Expected type indicator");
 	// TODO: multi token type
-	auto type_token = tokens.get();
+	auto type_token = m_tokens.get();
 	if (type_token.type != TokenType::Identifier)
 		error_at_token(type_token, "Expected type");
 
 	return Variable { type_token.data, name_token.data };
 }
 
-void Parser::parse_function(Function& function, ArrayStream<Token>& tokens) {
-	auto start = tokens.pos();
-	while (tokens.peek().type != TokenType::RightBracket) {
-		if (tokens.get().type == TokenType::Semicolon) {
-			auto i = tokens.pos();
-			tokens.seek_to(0);
-			function.statements.push_back(parse_statement(tokens.view().slice(start, i), &function));
-			start = i;
-			tokens.seek_to(start);
-		}
+void Parser::parse_function(Function& function) {
+	while (m_tokens.peek().type != TokenType::RightBracket) {
+		function.statements.push_back(parse_statement(&function));
+		expect_token_type(m_tokens.get(), TokenType::Semicolon, "Expected semicolon");
 	}
-	tokens.get();
+	m_tokens.get();
 }
 
-Statement Parser::parse_statement(ArrayView<Token> tokens, Function* parent) {
-	if (tokens.size() == 0)
-		assert(false, "Empty statements are unimplemented");
-	auto& first = tokens[0];
+Statement Parser::parse_statement(Function* parent) {
+	auto& first = m_tokens.get();
 	if (first.type == TokenType::Keyword && first.data == "return") {
 		assert(parent, "Return statement cannot appear outside function");
 		return Statement {
 			StatementType::Return,
-			{ parse_expression(tokens.slice(1, tokens.size() - 1), parent->return_type) }
+			{ parse_expression(parent->return_type) }
 		};
 	} else {
-		const auto exp = parse_expression(tokens.slice(0, tokens.size() - 1), Type { "void" });
+		m_tokens.seek_rel(-1);
+		const auto exp = parse_expression(Type { "void" });
 		return Statement {
 			StatementType::Expression,
 			{ exp }
@@ -314,90 +306,83 @@ Statement Parser::parse_statement(ArrayView<Token> tokens, Function* parent) {
 	}
 }
 
-Expression Parser::parse_expression(ArrayView<Token> tokens, const Type infer_type) {
-	if (tokens.size() == 0)
-		assert(false, "Expected expression.. somewhere");
-
-	if (tokens.size() == 1) {
-		const auto token = tokens[0];
-		if (token.type == TokenType::Number) {
-			Expression exp(ExpressionType::Literal);
-			exp.prefer_type = infer_type;
-			exp.data = Expression::LiteralData { std::stoi(token.data) };
-			return exp;
-		} else if (token.type == TokenType::Identifier) {
-			Expression exp(ExpressionType::Variable);
-			exp.data = Expression::VariableData { token.data };
-			return exp;
-		} else {
-			error_at_token(token, "Fuck!");
-		}
-	} else if (auto pos = tokens.find([](const auto& token) { return token.type == TokenType::Assign; }); pos) {
-		const auto rhs = parse_expression(tokens.slice(*pos + 1), Type { "void" });
-		const auto lhs = parse_expression(tokens.slice(0, *pos), rhs.prefer_type);
-		Expression exp(ExpressionType::Assignment);
-		// exp.prefer_type = rhs.prefer_type;
-		exp.children = { lhs, rhs };
+Expression Parser::parse_expression(const Type infer_type) {
+	const auto& token = m_tokens.get();
+	if (token.type == TokenType::Number) {
+		Expression exp(ExpressionType::Literal);
+		exp.prefer_type = infer_type;
+		exp.data = Expression::LiteralData { std::stoi(token.data) };
 		return exp;
-	} else if (tokens[0].type == TokenType::Keyword) {
-		if (tokens[0].data == "let") {
-			ArrayStream rest = tokens.slice(1);
-			const auto variable = parse_var_decl(rest);
+	} else if (token.type == TokenType::Identifier) {
+		Expression exp(ExpressionType::Variable);
+		exp.data = Expression::VariableData { token.data };
+		return exp;
+	// } else if (auto pos = tokens.find([](const auto& token) { return token.type == TokenType::Assign; }); pos) {
+	// 	const auto rhs = parse_expression(tokens.slice(*pos + 1), Type { "void" });
+	// 	const auto lhs = parse_expression(tokens.slice(0, *pos), rhs.prefer_type);
+	// 	Expression exp(ExpressionType::Assignment);
+	// 	// exp.prefer_type = rhs.prefer_type;
+	// 	exp.children = { lhs, rhs };
+	// 	return exp;
+	// } else if (tokens[0].type == TokenType::Keyword) {
+	// 	if (tokens[0].data == "let") {
+	// 		ArrayStream rest = tokens.slice(1);
+	// 		const auto variable = parse_var_decl(rest);
 
-			if (rest.size())
-				error_at_token(rest.get(), "Unexpected token");
+	// 		if (rest.size())
+	// 			error_at_token(rest.get(), "Unexpected token");
 			
-			Expression exp(ExpressionType::Declaration);
-			exp.prefer_type = variable.type;
-			exp.data = Expression::DeclarationData { variable };
-			return exp;
-		} else {
-			error_at_token(tokens[0], "idk what this is");
-		}		
-	} else if (tokens[0].type == TokenType::Operator) {
-		const auto& token = tokens[0];
-		// TODO: avoid repetition
-		if (token.data == "-") {
-			const auto child = parse_expression(tokens.slice(1), infer_type);
-			Expression exp(ExpressionType::Operator);
-			exp.data = Expression::OperatorData { OperatorType::Negation };
-			exp.children.push_back(child);
-			return exp;
-		} else if (token.data == "~") {
-			const auto child = parse_expression(tokens.slice(1), infer_type);
-			Expression exp(ExpressionType::Operator);
-			exp.data = Expression::OperatorData { OperatorType::Bitflip };
-			exp.children.push_back(child);
-			return exp;
-		} else if (token.data == "!") {
-			const auto child = parse_expression(tokens.slice(1), infer_type);
-			Expression exp(ExpressionType::Operator);
-			exp.data = Expression::OperatorData { OperatorType::Not };
-			exp.children.push_back(child);
-			return exp;
-		} else {
-			error_at_token(token, "idk what this operator is");
-		}
-	} else if (const auto pos = tokens.find([](const auto& token) { return token.type == TokenType::Operator; }); pos) {
-		const auto& token = tokens[*pos];
+	// 		Expression exp(ExpressionType::Declaration);
+	// 		exp.prefer_type = variable.type;
+	// 		exp.data = Expression::DeclarationData { variable };
+	// 		return exp;
+	// 	} else {
+	// 		error_at_token(tokens[0], "idk what this is");
+	// 	}		
+	// } else if (tokens[0].type == TokenType::Operator) {
+	// 	const auto& token = tokens[0];
+	// 	// TODO: avoid repetition
+	// 	if (token.data == "-") {
+	// 		const auto child = parse_expression(tokens.slice(1), infer_type);
+	// 		Expression exp(ExpressionType::Operator);
+	// 		exp.data = Expression::OperatorData { OperatorType::Negation };
+	// 		exp.children.push_back(child);
+	// 		return exp;
+	// 	} else if (token.data == "~") {
+	// 		const auto child = parse_expression(tokens.slice(1), infer_type);
+	// 		Expression exp(ExpressionType::Operator);
+	// 		exp.data = Expression::OperatorData { OperatorType::Bitflip };
+	// 		exp.children.push_back(child);
+	// 		return exp;
+	// 	} else if (token.data == "!") {
+	// 		const auto child = parse_expression(tokens.slice(1), infer_type);
+	// 		Expression exp(ExpressionType::Operator);
+	// 		exp.data = Expression::OperatorData { OperatorType::Not };
+	// 		exp.children.push_back(child);
+	// 		return exp;
+	// 	} else {
+	// 		error_at_token(token, "idk what this operator is");
+	// 	}
+	// } else if (const auto pos = tokens.find([](const auto& token) { return token.type == TokenType::Operator; }); pos) {
+	// 	const auto& token = tokens[*pos];
 		
-		OperatorType type = OperatorType::Addition;
-		if (token.data == "+") type = OperatorType::Addition;
-		else if (token.data == "-") type = OperatorType::Subtraction;
-		else if (token.data == "*") type = OperatorType::Multiplication;
-		else if (token.data == "/") type = OperatorType::Division;
-		else error_at_token(token, "implement me uwu");
+	// 	OperatorType type = OperatorType::Addition;
+	// 	if (token.data == "+") type = OperatorType::Addition;
+	// 	else if (token.data == "-") type = OperatorType::Subtraction;
+	// 	else if (token.data == "*") type = OperatorType::Multiplication;
+	// 	else if (token.data == "/") type = OperatorType::Division;
+	// 	else error_at_token(token, "implement me uwu");
 
-		const auto lhs = parse_expression(tokens.slice(0, *pos), infer_type);
-		const auto rhs = parse_expression(tokens.slice(*pos + 1), infer_type);
+	// 	const auto lhs = parse_expression(tokens.slice(0, *pos), infer_type);
+	// 	const auto rhs = parse_expression(tokens.slice(*pos + 1), infer_type);
 		
-		Expression exp(ExpressionType::Operator);
-		exp.data = Expression::OperatorData { type };
-		exp.children.push_back(lhs);
-		exp.children.push_back(rhs);
-		return exp;
+	// 	Expression exp(ExpressionType::Operator);
+	// 	exp.data = Expression::OperatorData { type };
+	// 	exp.children.push_back(lhs);
+	// 	exp.children.push_back(rhs);
+	// 	return exp;
 	} else {
-		error_at_token(tokens[0], "idk what this expression is");
+		error_at_token(token, "idk what this expression is");
 	}
 }
 
@@ -526,8 +511,9 @@ int main(int argc, char** argv) {
 
 	input_file.close();
 
-	Parser parser(args[1]);
-	parser.parse(tokens);
+	ArrayStream token_stream(ArrayView{tokens});
+	Parser parser(args[1], token_stream);
+	parser.parse();
 	print("File parsed\n");
 
 	for (auto& function : parser.m_functions) {
