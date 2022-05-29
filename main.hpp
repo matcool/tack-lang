@@ -142,9 +142,19 @@ public:
 	Variable parse_var_decl();
 	void parse_function(Function& function);
 	Statement parse_statement(Function* parent);
-	Expression parse_expression(const Type);
+
+	// impl based on https://en.wikipedia.org/wiki/Recursive_descent_parser
+	// TODO: change the function names theyre kinda confusing
+	// parses "+"|"-" term...
+	Expression parse_expression();
+	// parses factor ("/"|"*" factor...)
+	Expression parse_exp_term();
+	// either identifier, literal or "(" expression ")"
+	Expression parse_exp_factor();
+
 	void error_at_token(const Token& token, const std::string_view& msg);
 	Token& expect_token_type(Token& token, TokenType type, const std::string_view& msg);
+	
 	void parse();
 };
 
@@ -168,3 +178,5 @@ public:
 	void compile();
 
 };
+
+void print_expression(const Expression& exp, const int depth = 0);

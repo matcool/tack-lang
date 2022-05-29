@@ -289,16 +289,16 @@ void Parser::parse_function(Function& function) {
 }
 
 Statement Parser::parse_statement(Function* parent) {
-	auto& first = m_tokens.get();
+	auto& first = m_tokens.peek();
 	if (first.type == TokenType::Keyword && first.data == "return") {
+		m_tokens.get();
 		assert(parent, "Return statement cannot appear outside function");
 		return Statement {
 			StatementType::Return,
-			{ parse_expression(parent->return_type) }
+			{ parse_expression() }
 		};
 	} else {
-		m_tokens.seek_rel(-1);
-		const auto exp = parse_expression(Type { "void" });
+		const auto exp = parse_expression();
 		return Statement {
 			StatementType::Expression,
 			{ exp }
@@ -306,86 +306,65 @@ Statement Parser::parse_statement(Function* parent) {
 	}
 }
 
-Expression Parser::parse_expression(const Type infer_type) {
+Expression Parser::parse_exp_factor() {
 	const auto& token = m_tokens.get();
 	if (token.type == TokenType::Number) {
 		Expression exp(ExpressionType::Literal);
-		exp.prefer_type = infer_type;
 		exp.data = Expression::LiteralData { std::stoi(token.data) };
 		return exp;
 	} else if (token.type == TokenType::Identifier) {
 		Expression exp(ExpressionType::Variable);
 		exp.data = Expression::VariableData { token.data };
 		return exp;
-	// } else if (auto pos = tokens.find([](const auto& token) { return token.type == TokenType::Assign; }); pos) {
-	// 	const auto rhs = parse_expression(tokens.slice(*pos + 1), Type { "void" });
-	// 	const auto lhs = parse_expression(tokens.slice(0, *pos), rhs.prefer_type);
-	// 	Expression exp(ExpressionType::Assignment);
-	// 	// exp.prefer_type = rhs.prefer_type;
-	// 	exp.children = { lhs, rhs };
-	// 	return exp;
-	// } else if (tokens[0].type == TokenType::Keyword) {
-	// 	if (tokens[0].data == "let") {
-	// 		ArrayStream rest = tokens.slice(1);
-	// 		const auto variable = parse_var_decl(rest);
-
-	// 		if (rest.size())
-	// 			error_at_token(rest.get(), "Unexpected token");
-			
-	// 		Expression exp(ExpressionType::Declaration);
-	// 		exp.prefer_type = variable.type;
-	// 		exp.data = Expression::DeclarationData { variable };
-	// 		return exp;
-	// 	} else {
-	// 		error_at_token(tokens[0], "idk what this is");
-	// 	}		
-	// } else if (tokens[0].type == TokenType::Operator) {
-	// 	const auto& token = tokens[0];
-	// 	// TODO: avoid repetition
-	// 	if (token.data == "-") {
-	// 		const auto child = parse_expression(tokens.slice(1), infer_type);
-	// 		Expression exp(ExpressionType::Operator);
-	// 		exp.data = Expression::OperatorData { OperatorType::Negation };
-	// 		exp.children.push_back(child);
-	// 		return exp;
-	// 	} else if (token.data == "~") {
-	// 		const auto child = parse_expression(tokens.slice(1), infer_type);
-	// 		Expression exp(ExpressionType::Operator);
-	// 		exp.data = Expression::OperatorData { OperatorType::Bitflip };
-	// 		exp.children.push_back(child);
-	// 		return exp;
-	// 	} else if (token.data == "!") {
-	// 		const auto child = parse_expression(tokens.slice(1), infer_type);
-	// 		Expression exp(ExpressionType::Operator);
-	// 		exp.data = Expression::OperatorData { OperatorType::Not };
-	// 		exp.children.push_back(child);
-	// 		return exp;
-	// 	} else {
-	// 		error_at_token(token, "idk what this operator is");
-	// 	}
-	// } else if (const auto pos = tokens.find([](const auto& token) { return token.type == TokenType::Operator; }); pos) {
-	// 	const auto& token = tokens[*pos];
-		
-	// 	OperatorType type = OperatorType::Addition;
-	// 	if (token.data == "+") type = OperatorType::Addition;
-	// 	else if (token.data == "-") type = OperatorType::Subtraction;
-	// 	else if (token.data == "*") type = OperatorType::Multiplication;
-	// 	else if (token.data == "/") type = OperatorType::Division;
-	// 	else error_at_token(token, "implement me uwu");
-
-	// 	const auto lhs = parse_expression(tokens.slice(0, *pos), infer_type);
-	// 	const auto rhs = parse_expression(tokens.slice(*pos + 1), infer_type);
-		
-	// 	Expression exp(ExpressionType::Operator);
-	// 	exp.data = Expression::OperatorData { type };
-	// 	exp.children.push_back(lhs);
-	// 	exp.children.push_back(rhs);
-	// 	return exp;
+	} else if (token.type == TokenType::LeftParen) {
+		const auto exp = parse_expression();
+		expect_token_type(m_tokens.get(), TokenType::RightParen, "Expected )");
+		return exp;
 	} else {
-		error_at_token(token, "idk what this expression is");
+		error_at_token(token, "idk what this is");
 	}
 }
 
+OperatorType op_type_from_token(const Token& token) {
+	assert(token.type == TokenType::Operator, "token should be an operator");
+	if (token.data == "+") return OperatorType::Addition;
+	if (token.data == "-") return OperatorType::Subtraction;
+	if (token.data == "*") return OperatorType::Multiplication;
+	if (token.data == "/") return OperatorType::Division;
+	if (token.data == "!") return OperatorType::Not;
+	if (token.data == "~") return OperatorType::Bitflip;
+	return {};
+}
+
+Expression Parser::parse_exp_term() {
+	const auto factor = parse_exp_factor();
+	const auto& next = m_tokens.peek();
+	if (next.type == TokenType::Operator
+		&& (next.data == "/" || next.data == "*")) {
+		Expression exp(ExpressionType::Operator);
+		exp.data = Expression::OperatorData { op_type_from_token(m_tokens.get()) };
+		exp.children.push_back(factor);
+		exp.children.push_back(parse_exp_term());
+		return exp;
+	} else {
+		return factor;
+	}
+}
+
+Expression Parser::parse_expression() {
+	const auto term = parse_exp_term();
+	const auto& next = m_tokens.peek();
+	if (next.type == TokenType::Operator
+		&& (next.data == "+" || next.data == "-")) {
+		Expression exp(ExpressionType::Operator);
+		exp.data = Expression::OperatorData { op_type_from_token(m_tokens.get()) };
+		exp.children.push_back(term);
+		exp.children.push_back(parse_expression());
+		return exp;
+	} else {
+		return term;
+	}
+}
 
 void Compiler::compile() {
 	for (auto& function : m_parser.m_functions) {
@@ -407,10 +386,8 @@ void Compiler::compile_function(Function& function) {
 
 void Compiler::compile_statement(Statement& statement) {
 	if (statement.type == StatementType::Return) {
-		// how do i tell where compile_expression to "output" to
-		for (auto& expression : statement.expressions) {
-			compile_expression(expression);
-		}
+		// output should be in eax
+		compile_expression(statement.expressions[0]);
 		write("ret");
 	} else {
 		assert(false, "unimplemented");
@@ -446,7 +423,8 @@ void Compiler::compile_expression(Expression& exp) {
 			write("push eax");
 			compile_expression(exp.children[1]);
 			write("pop ecx");
-			write("sub eax, ecx");
+			write("sub ecx, eax");
+			write("mov eax, ecx");
 		} else if (data.op_type == OperatorType::Multiplication) {
 			compile_expression(exp.children[0]);
 			write("push eax");
@@ -462,7 +440,7 @@ void Compiler::compile_expression(Expression& exp) {
 }
 
 
-void print_expression(const Expression& exp, const int depth = 0) {
+void print_expression(const Expression& exp, const int depth) {
 	for (int i = 0; i < depth; ++i)
 		print("  ");
 
