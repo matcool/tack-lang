@@ -306,6 +306,17 @@ Statement Parser::parse_statement(Function* parent) {
 	}
 }
 
+OperatorType op_type_from_token(const Token& token) {
+	assert(token.type == TokenType::Operator, "token should be an operator");
+	if (token.data == "+") return OperatorType::Addition;
+	if (token.data == "-") return OperatorType::Subtraction;
+	if (token.data == "*") return OperatorType::Multiplication;
+	if (token.data == "/") return OperatorType::Division;
+	if (token.data == "!") return OperatorType::Not;
+	if (token.data == "~") return OperatorType::Bitflip;
+	return {};
+}
+
 Expression Parser::parse_exp_factor() {
 	const auto& token = m_tokens.get();
 	if (token.type == TokenType::Number) {
@@ -320,20 +331,22 @@ Expression Parser::parse_exp_factor() {
 		const auto exp = parse_expression();
 		expect_token_type(m_tokens.get(), TokenType::RightParen, "Expected )");
 		return exp;
+	} else if (token.type == TokenType::Operator) {
+		auto type = op_type_from_token(token);
+		if (type == OperatorType::Subtraction) type = OperatorType::Negation;
+
+		if (type != OperatorType::Bitflip
+		 && type != OperatorType::Negation
+		 && type != OperatorType::Not)
+			error_at_token(token, "Invalid unary operator");
+
+		Expression exp(ExpressionType::Operator);
+		exp.data = Expression::OperatorData { type };
+		exp.children.push_back(parse_exp_factor());
+		return exp;
 	} else {
 		error_at_token(token, "idk what this is");
 	}
-}
-
-OperatorType op_type_from_token(const Token& token) {
-	assert(token.type == TokenType::Operator, "token should be an operator");
-	if (token.data == "+") return OperatorType::Addition;
-	if (token.data == "-") return OperatorType::Subtraction;
-	if (token.data == "*") return OperatorType::Multiplication;
-	if (token.data == "/") return OperatorType::Division;
-	if (token.data == "!") return OperatorType::Not;
-	if (token.data == "~") return OperatorType::Bitflip;
-	return {};
 }
 
 Expression Parser::parse_exp_term() {
