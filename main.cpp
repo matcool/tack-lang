@@ -281,18 +281,20 @@ Variable Parser::parse_var_decl() {
 }
 
 void Parser::parse_function(Function& function) {
+	m_cur_function = &function;
 	while (m_tokens.peek().type != TokenType::RightBracket) {
-		function.statements.push_back(parse_statement(&function));
+		function.statements.push_back(parse_statement());
 		expect_token_type(m_tokens.get(), TokenType::Semicolon, "Expected semicolon");
 	}
 	m_tokens.get();
+	m_cur_function = nullptr;
 }
 
-Statement Parser::parse_statement(Function* parent) {
+Statement Parser::parse_statement() {
 	auto& first = m_tokens.peek();
 	if (first.type == TokenType::Keyword && first.data == "return") {
 		m_tokens.get();
-		assert(parent, "Return statement cannot appear outside function");
+		assert(m_cur_function, "Return statement cannot appear outside function");
 		return Statement {
 			StatementType::Return,
 			{ parse_expression() }
@@ -317,7 +319,7 @@ OperatorType op_type_from_token(const Token& token) {
 	return {};
 }
 
-Expression Parser::parse_exp_factor() {
+Expression Parser::parse_exp_primary() {
 	const auto& token = m_tokens.get();
 	if (token.type == TokenType::Number) {
 		Expression exp(ExpressionType::Literal);
@@ -342,35 +344,58 @@ Expression Parser::parse_exp_factor() {
 
 		Expression exp(ExpressionType::Operator);
 		exp.data = Expression::OperatorData { type };
-		exp.children.push_back(parse_exp_factor());
+		exp.children.push_back(parse_exp_primary());
 		return exp;
+	} else if (token.type == TokenType::Keyword && token.data == "let") {
+		const auto var = parse_var_decl();
+		m_cur_function->scope.variables.push_back(var);
+		return Expression {
+			ExpressionType::Declaration,
+			Expression::DeclarationData { var },
+			{}
+		};
 	} else {
-		error_at_token(token, "idk what this is");
+		error_at_token(token, "Tried to parse unknown primary expression");
 	}
+	std::abort();
 }
 
-Expression Parser::parse_exp_term() {
-	const auto factor = parse_exp_factor();
+Expression Parser::parse_exp_stage2() {
+	const auto factor = parse_exp_primary();
 	const auto& next = m_tokens.peek();
 	if (next.type == TokenType::Operator
 		&& (next.data == "/" || next.data == "*")) {
 		Expression exp(ExpressionType::Operator);
 		exp.data = Expression::OperatorData { op_type_from_token(m_tokens.get()) };
 		exp.children.push_back(factor);
-		exp.children.push_back(parse_exp_term());
+		exp.children.push_back(parse_exp_stage2());
 		return exp;
 	} else {
 		return factor;
 	}
 }
 
-Expression Parser::parse_expression() {
-	const auto term = parse_exp_term();
+Expression Parser::parse_exp_stage1() {
+	const auto term = parse_exp_stage2();
 	const auto& next = m_tokens.peek();
 	if (next.type == TokenType::Operator
 		&& (next.data == "+" || next.data == "-")) {
 		Expression exp(ExpressionType::Operator);
 		exp.data = Expression::OperatorData { op_type_from_token(m_tokens.get()) };
+		exp.children.push_back(term);
+		exp.children.push_back(parse_exp_stage1());
+		return exp;
+	} else {
+		return term;
+	}
+}
+
+Expression Parser::parse_expression() {
+	const auto term = parse_exp_stage1();
+	const auto& next = m_tokens.peek();
+	if (next.type == TokenType::Assign) {
+		m_tokens.get();
+		Expression exp(ExpressionType::Assignment);
 		exp.children.push_back(term);
 		exp.children.push_back(parse_expression());
 		return exp;
@@ -387,21 +412,33 @@ void Compiler::compile() {
 
 void Compiler::compile_function(Function& function) {
 	write("{}:", function.name);
-	// write("push ebp");
-	// write("mov ebp, esp");
+	m_cur_function = &function;
+	m_var_counter = 0;
+	m_variables.clear();
+	if (function.scope.variables.size()) {
+		write("push ebp");
+		write("mov ebp, esp");
+		write("sub esp, {}", function.scope.variables.size() * 4);
+	}
 	for (auto& statement : function.statements) {
 		compile_statement(statement);
 	}
-	// write("mov esp, ebp");
-	// write("pop ebp");
-	// write("ret");
+	m_cur_function = nullptr;
+	write("");
 }
 
 void Compiler::compile_statement(Statement& statement) {
 	if (statement.type == StatementType::Return) {
 		// output should be in eax
 		compile_expression(statement.expressions[0]);
+		if (m_cur_function && m_cur_function->scope.variables.size()) {
+			write("add esp, {}", m_cur_function->scope.variables.size() * 4);
+			write("mov esp, ebp");
+			write("pop ebp");
+		}
 		write("ret");
+	} else if (statement.type == StatementType::Expression) {
+		compile_expression(statement.expressions[0]);
 	} else {
 		assert(false, "unimplemented");
 	}
@@ -447,7 +484,27 @@ void Compiler::compile_expression(Expression& exp) {
 		} else {
 			assert(false, "unimplemented");
 		}
+	} else if (exp.type == ExpressionType::Declaration) {
+		const auto& data = std::get<Expression::DeclarationData>(exp.data);
+		// stores a pointer to the variable in eax because idk how to deal with this yet
+		write("lea eax, [ebp - {}]", m_var_counter * 4); // hardcode every variable to be 4 bytes trololol
+		m_variables[data.var.name] = m_var_counter;
+		++m_var_counter;
+	} else if (exp.type == ExpressionType::Assignment) {
+		compile_expression(exp.children[1]);
+		write("push eax");
+		// assumes its a var declaration, which stores a pointer to eax
+		compile_expression(exp.children[0]);
+		write("pop ecx");
+		write("mov [eax], ecx");
+		// assignment evaluates to the rhs
+		write("mov eax, ecx");
+	} else if (exp.type == ExpressionType::Variable) {
+		const auto& data = std::get<Expression::VariableData>(exp.data);
+		// no references yet
+		write("mov eax, [ebp - {}]", m_variables[data.name] * 4);
 	} else {
+		print("{}\n", enum_name(exp.type));
 		assert(false, "unimplemented");
 	}
 }

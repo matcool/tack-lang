@@ -102,7 +102,10 @@ struct Expression {
 		OperatorType op_type;
 	};
 	std::variant<bool, DeclarationData, VariableData, LiteralData, OperatorData> data;
-	Expression(ExpressionType type) : type(type) {}
+	Expression(const ExpressionType type) : type(type) {}
+	template <class T>
+	Expression(const ExpressionType type, T&& data, const std::vector<Expression> children) : 
+		type(type), children(children), data(std::forward<T>(data)) {}
 };
 
 enum class StatementType {
@@ -135,22 +138,24 @@ public:
 	std::vector<Function> m_functions;
 	std::string m_file_name;
 	ArrayStream<Token> m_tokens;
+	Function* m_cur_function = nullptr;
 
 	// Parser() {}
 	Parser(const std::string_view& file_name, ArrayStream<Token> tokens);
 
 	Variable parse_var_decl();
 	void parse_function(Function& function);
-	Statement parse_statement(Function* parent);
+	Statement parse_statement();
 
 	// impl based on https://en.wikipedia.org/wiki/Recursive_descent_parser
-	// TODO: change the function names theyre kinda confusing
-	// parses "+"|"-" term...
+	// expression = stage1 ["=" expression]
 	Expression parse_expression();
-	// parses factor ("/"|"*" factor...)
-	Expression parse_exp_term();
-	// either identifier, literal or "(" expression ")"
-	Expression parse_exp_factor();
+	// stage1 = stage2 ["+"|"-" stage1]
+	Expression parse_exp_stage1();
+	// stage2 = primary ["/"|"*" stage2]
+	Expression parse_exp_stage2();
+	// primary = identifier | literal | unary primary | "(" expression ")"
+	Expression parse_exp_primary();
 
 	void error_at_token(const Token& token, const std::string_view& msg);
 	Token& expect_token_type(Token& token, TokenType type, const std::string_view& msg);
@@ -162,6 +167,10 @@ class Compiler {
 public:
 	std::ostream& m_stream;
 	Parser& m_parser;
+	Function* m_cur_function = nullptr;
+	// TODO: not
+	size_t m_var_counter = 0;
+	std::unordered_map<std::string, size_t> m_variables;
 
 	Compiler(std::ostream& output, Parser& parser) : m_stream(output), m_parser(parser) {}
 

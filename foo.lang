@@ -1,7 +1,11 @@
-//fn mat(): i32 {
-//	let a: i32 = 1997;
-//	return a;
-//}
+fn mat(): i32 {
+	let a: i32 = 4;
+	// doesnt work yet
+	// a = 3;
+	let b: i32 = 5;
+	let c : i32 = b * a + 1;
+	return c * 3 + a;
+}
 
 fn main(): i32 {
 	return -1 + 4 + !0 + -(2 * 2) + 10;
