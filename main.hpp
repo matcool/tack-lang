@@ -69,6 +69,7 @@ enum class ExpressionType {
 	Variable,
 	Assignment,
 	Operator,
+	Call,
 };
 
 enum class OperatorType {
@@ -101,7 +102,11 @@ struct Expression {
 	struct OperatorData {
 		OperatorType op_type;
 	};
-	std::variant<bool, DeclarationData, VariableData, LiteralData, OperatorData> data;
+	struct CallData {
+		// TODO: have the function name be an expression?
+		std::string function_name;
+	};
+	std::variant<bool, DeclarationData, VariableData, LiteralData, OperatorData, CallData> data;
 	Expression(const ExpressionType type) : type(type) {}
 	template <class T>
 	Expression(const ExpressionType type, T&& data, const std::vector<Expression> children) : 

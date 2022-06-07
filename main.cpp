@@ -47,6 +47,7 @@ inline const char* enum_name(const ExpressionType& t) {
 		case ExpressionType::Variable: return "Variable";
 		case ExpressionType::Assignment: return "Assignment";
 		case ExpressionType::Operator: return "Operator";
+		case ExpressionType::Call: return "Call";
 	}
 	return "";
 }
@@ -326,9 +327,18 @@ Expression Parser::parse_exp_primary() {
 		exp.data = Expression::LiteralData { std::stoi(token.data) };
 		return exp;
 	} else if (token.type == TokenType::Identifier) {
-		Expression exp(ExpressionType::Variable);
-		exp.data = Expression::VariableData { token.data };
-		return exp;
+		if (m_tokens.peek().type == TokenType::LeftParen) {
+			m_tokens.get();
+			Expression exp(ExpressionType::Call);
+			exp.data = Expression::CallData { token.data };
+			// TODO: function args
+			expect_token_type(m_tokens.get(), TokenType::RightParen, "no support for function args");
+			return exp;
+		} else {
+			Expression exp(ExpressionType::Variable);
+			exp.data = Expression::VariableData { token.data };
+			return exp;
+		}
 	} else if (token.type == TokenType::LeftParen) {
 		const auto exp = parse_expression();
 		expect_token_type(m_tokens.get(), TokenType::RightParen, "Expected )");
@@ -503,6 +513,9 @@ void Compiler::compile_expression(Expression& exp) {
 		const auto& data = std::get<Expression::VariableData>(exp.data);
 		// no references yet
 		write("mov eax, [ebp - {}]", m_variables[data.name] * 4);
+	} else if (exp.type == ExpressionType::Call) {
+		write("call {}", std::get<Expression::CallData>(exp.data).function_name);
+		// return value should already be in eax
 	} else {
 		print("{}\n", enum_name(exp.type));
 		assert(false, "unimplemented");
