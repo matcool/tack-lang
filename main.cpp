@@ -243,13 +243,9 @@ void Parser::parse() {
 			// 	error_at_token(m_tokens.peek(), "Unclosed parenthesis");
 			
 			// Arraym_tokens arg_list_tokens(tokens.slice(i + 1, i + *rb));
-			while (m_tokens.peek().type != TokenType::RightParen) {
+			parse_comma_list([&] {
 				function.arguments.push_back(parse_var_decl());
-				auto& next = m_tokens.peek();
-				if (next.type != TokenType::Comma && next.type != TokenType::RightParen)
-					error_at_token(next, "Expected comma");
-			}
-			m_tokens.get();
+			});
 
 			// TODO: default to void
 			expect_token_type(m_tokens.get(), TokenType::TypeIndicator, "Expected type indicator");
@@ -331,8 +327,9 @@ Expression Parser::parse_exp_primary() {
 			m_tokens.get();
 			Expression exp(ExpressionType::Call);
 			exp.data = Expression::CallData { token.data };
-			// TODO: function args
-			expect_token_type(m_tokens.get(), TokenType::RightParen, "no support for function args");
+			parse_comma_list([&] {
+				exp.children.push_back(parse_expression());
+			});
 			return exp;
 		} else {
 			Expression exp(ExpressionType::Variable);
@@ -425,10 +422,14 @@ void Compiler::compile_function(Function& function) {
 	m_cur_function = &function;
 	m_var_counter = 0;
 	m_variables.clear();
-	if (function.scope.variables.size()) {
+	for (size_t i = 0; i < function.arguments.size(); ++i) {
+		m_variables[function.arguments[i].name] = -(function.arguments.size() - i - 1 + 2);
+	}
+	if (function.scope.variables.size() || function.arguments.size()) {
 		write("push ebp");
 		write("mov ebp, esp");
-		write("sub esp, {}", function.scope.variables.size() * 4);
+		if (function.scope.variables.size())
+			write("sub esp, {}", function.scope.variables.size() * 4);
 	}
 	for (auto& statement : function.statements) {
 		compile_statement(statement);
@@ -441,10 +442,14 @@ void Compiler::compile_statement(Statement& statement) {
 	if (statement.type == StatementType::Return) {
 		// output should be in eax
 		compile_expression(statement.expressions[0]);
-		if (m_cur_function && m_cur_function->scope.variables.size()) {
-			write("add esp, {}", m_cur_function->scope.variables.size() * 4);
-			write("mov esp, ebp");
-			write("pop ebp");
+		if (m_cur_function) {
+			if (m_cur_function->scope.variables.size())
+				write("add esp, {}", m_cur_function->scope.variables.size() * 4);
+				
+			if (m_cur_function->scope.variables.size() || m_cur_function->arguments.size()) {
+				write("mov esp, ebp");
+				write("pop ebp");
+			}
 		}
 		write("ret");
 	} else if (statement.type == StatementType::Expression) {
@@ -454,7 +459,7 @@ void Compiler::compile_statement(Statement& statement) {
 	}
 }
 
-void Compiler::compile_expression(Expression& exp) {
+void Compiler::compile_expression(Expression& exp, bool by_reference) {
 	if (exp.type == ExpressionType::Literal) {
 		// the
 		const auto value = std::get<int>(std::get<Expression::LiteralData>(exp.data).value);
@@ -504,18 +509,38 @@ void Compiler::compile_expression(Expression& exp) {
 		compile_expression(exp.children[1]);
 		write("push eax");
 		// assumes its a var declaration, which stores a pointer to eax
-		compile_expression(exp.children[0]);
+		compile_expression(exp.children[0], true);
 		write("pop ecx");
 		write("mov [eax], ecx");
 		// assignment evaluates to the rhs
 		write("mov eax, ecx");
 	} else if (exp.type == ExpressionType::Variable) {
 		const auto& data = std::get<Expression::VariableData>(exp.data);
-		// no references yet
-		write("mov eax, [ebp - {}]", m_variables[data.name] * 4);
+		if (!m_variables.count(data.name))
+			assert(false, "unknown variable!");
+		static constexpr auto format_offset = [](int off) -> std::string {
+			if (off == 0) return "";
+			else if (off < 0) return format("- {}", off);
+			else return format("+ {}", off);
+		};
+		if (by_reference)
+			write("lea eax, [ebp {}]", format_offset(-m_variables[data.name] * 4));
+		else
+			write("mov eax, [ebp {}]", format_offset(-m_variables[data.name] * 4));
 	} else if (exp.type == ExpressionType::Call) {
-		write("call {}", std::get<Expression::CallData>(exp.data).function_name);
-		// return value should already be in eax
+		for (auto& child : exp.children) {
+			compile_expression(child);
+			write("push eax");
+		}
+		const auto& target_name = std::get<Expression::CallData>(exp.data).function_name;
+		write("call {}", target_name);
+		// clean up stack if theres arguments
+		for (const auto& function : m_parser.m_functions) {
+			if (function.name == target_name && !function.arguments.empty()) {
+				write("add esp, {}", function.arguments.size() * 4);
+				break;
+			}
+		}
 	} else {
 		print("{}\n", enum_name(exp.type));
 		assert(false, "unimplemented");
@@ -540,6 +565,8 @@ void print_expression(const Expression& exp, const int depth) {
 		print("({}) ", std::get<Expression::VariableData>(exp.data).name);
 	} else if (exp.type == ExpressionType::Operator) {
 		print("({}) ", enum_name(std::get<Expression::OperatorData>(exp.data).op_type));
+	} else if (exp.type == ExpressionType::Call) {
+		print("({}) ", std::get<Expression::CallData>(exp.data).function_name);
 	}
 	print("\n");
 	for (auto& child : exp.children) {
@@ -566,9 +593,9 @@ int main(int argc, char** argv) {
 	Lexer lexer(input_file);
 	auto tokens = lexer.get_tokens();
 	print("File tokenized\n");
-	for (auto& token : tokens) {
-		print(" - {}\n", token);
-	}
+	// for (auto& token : tokens) {
+	// 	print(" - {}\n", token);
+	// }
 
 	input_file.close();
 

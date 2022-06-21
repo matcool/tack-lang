@@ -1,8 +1,8 @@
-fn mat(): i32 {
-	return 10;
+fn add(a: i32, b: i32): i32 {
+	return a + b;
 }
 
 fn main(): i32 {
-	let b: i32 = mat() - 2;
+	let b: i32 = add(3, add(10, 12));
 	return b;
 }

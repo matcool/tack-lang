@@ -165,6 +165,31 @@ public:
 	void error_at_token(const Token& token, const std::string_view& msg);
 	Token& expect_token_type(Token& token, TokenType type, const std::string_view& msg);
 	
+	// Parses comma list enclosed by parenthesis (todo: customizable)
+	// callable is expected to eat the tokens for each thing in the list
+	// leaving either the comma or right paren after
+	template <class Func>
+	void parse_comma_list(Func&& callable) {
+		while (true) {
+			if (m_tokens.peek().type == TokenType::RightParen) {
+				m_tokens.get();
+				return;
+			}
+
+			callable();
+
+			const auto& next = m_tokens.peek();
+			if (next.type == TokenType::Comma) {
+				m_tokens.get();
+			} else if (next.type == TokenType::RightParen) {
+				m_tokens.get();
+				return;
+			} else {
+				error_at_token(next, "Unexpected token");
+			}
+		}
+	}
+
 	void parse();
 };
 
@@ -175,7 +200,7 @@ public:
 	Function* m_cur_function = nullptr;
 	// TODO: not
 	size_t m_var_counter = 0;
-	std::unordered_map<std::string, size_t> m_variables;
+	std::unordered_map<std::string, int> m_variables;
 
 	Compiler(std::ostream& output, Parser& parser) : m_stream(output), m_parser(parser) {}
 
@@ -185,7 +210,7 @@ public:
 		m_stream << '\n';
 	}
 
-	void compile_expression(Expression&);
+	void compile_expression(Expression&, bool ref = false);
 	void compile_statement(Statement&);
 	void compile_function(Function&);
 
