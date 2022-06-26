@@ -216,6 +216,8 @@ public:
 	void compile_statement(Statement&);
 	void compile_function(Function&);
 
+	void generate_return(const Function& function);
+
 	void compile();
 
 };

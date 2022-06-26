@@ -435,6 +435,7 @@ void Compiler::compile_function(Function& function) {
 	for (auto& statement : function.statements) {
 		compile_statement(statement);
 	}
+	generate_return(function);
 	m_cur_function = nullptr;
 	write("");
 }
@@ -443,21 +444,26 @@ void Compiler::compile_statement(Statement& statement) {
 	if (statement.type == StatementType::Return) {
 		// output should be in eax
 		compile_expression(statement.expressions[0]);
-		if (m_cur_function) {
-			if (m_cur_function->scope.variables.size())
-				write("add esp, {}", m_cur_function->scope.variables.size() * 4);
-				
-			if (m_cur_function->scope.variables.size() || m_cur_function->arguments.size()) {
-				write("mov esp, ebp");
-				write("pop ebp");
-			}
-		}
-		write("ret");
+		// shouldnt ever be null
+		if (m_cur_function)
+			generate_return(*m_cur_function);
 	} else if (statement.type == StatementType::Expression) {
 		compile_expression(statement.expressions[0]);
 	} else {
 		assert(false, "unimplemented");
 	}
+}
+
+void Compiler::generate_return(const Function& function) {
+	if (function.scope.variables.size()) {
+		write("add esp, {}", function.scope.variables.size() * 4);
+	}
+		
+	if (function.scope.variables.size() || function.arguments.size()) {
+		write("mov esp, ebp");
+		write("pop ebp");
+	}
+	write("ret");
 }
 
 void Compiler::compile_expression(Expression& exp, bool by_reference) {
