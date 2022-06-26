@@ -238,29 +238,33 @@ void Parser::parse() {
 			auto& function = m_functions.emplace_back();
 			function.name = expect_token_type(m_tokens.get(), TokenType::Identifier, "Expected function name").data;
 			expect_token_type(m_tokens.get(), TokenType::LeftParen, "Expected function args");
-			// auto rb = m_tokens.view().find([](Token& token) { return token.type == TokenType::RightParen; });
-			// if (!rb)
-			// 	error_at_token(m_tokens.peek(), "Unclosed parenthesis");
-			
-			// Arraym_tokens arg_list_tokens(tokens.slice(i + 1, i + *rb));
+
 			parse_comma_list([&] {
 				function.arguments.push_back(parse_var_decl());
 			});
 
-			// TODO: default to void
-			expect_token_type(m_tokens.get(), TokenType::TypeIndicator, "Expected type indicator");
-
-			// TODO: properly parse types
-			auto type_token = expect_token_type(m_tokens.get(), TokenType::Identifier, "Expected type");
-			function.return_type = Type { type_token.data };
+			if (m_tokens.peek().type == TokenType::TypeIndicator) {
+				m_tokens.get();
+				function.return_type = parse_type();
+				expect_token_type(m_tokens.get(), TokenType::LeftBracket, "Expected bracket");
+			} else if (m_tokens.peek().type == TokenType::LeftBracket) {
+				m_tokens.get();
+				function.return_type = Type { "void" };
+			} else {
+				expect_token_type(m_tokens.get(), TokenType::LeftBracket, "Expected bracket or type indicator");
+			}
 			
-			expect_token_type(m_tokens.get(), TokenType::LeftBracket, "Expected bracket");
-
 			parse_function(function);
 		} else {
 			assert(false, "Unimplemented token outside in global scope");
 		}
 	}
+}
+
+Type Parser::parse_type() {
+	// TODO: fancier types
+	const auto token = expect_token_type(m_tokens.get(), TokenType::Identifier, "Expected type");
+	return Type { token.data };
 }
 
 Variable Parser::parse_var_decl() {
@@ -269,12 +273,9 @@ Variable Parser::parse_var_decl() {
 		error_at_token(name_token, "Expected variable name");
 	if (m_tokens.get().type != TokenType::TypeIndicator)
 		error_at_token(m_tokens.prev(), "Expected type indicator");
-	// TODO: multi token type
-	auto type_token = m_tokens.get();
-	if (type_token.type != TokenType::Identifier)
-		error_at_token(type_token, "Expected type");
+	const auto type = parse_type();
 
-	return Variable { type_token.data, name_token.data };
+	return Variable { type, name_token.data };
 }
 
 void Parser::parse_function(Function& function) {

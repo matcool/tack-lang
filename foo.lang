@@ -6,3 +6,7 @@ fn main(): i32 {
 	let b: i32 = add(3, add(10, 12));
 	return b;
 }
+
+fn foo() {
+	10 + 2;
+}

@@ -152,6 +152,8 @@ public:
 	void parse_function(Function& function);
 	Statement parse_statement();
 
+	Type parse_type();
+
 	// impl based on https://en.wikipedia.org/wiki/Recursive_descent_parser
 	// expression = stage1 ["=" expression]
 	Expression parse_expression();
