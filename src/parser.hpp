@@ -1,60 +1,13 @@
 #pragma once
-#include <optional>
+#include <string>
 #include <vector>
-#include "format.hpp"
-#include "util.hpp"
-
-enum class TokenType {
-	Unknown,
-	Semicolon,
-	String,
-	LeftParen,
-	RightParen,
-	LeftBracket,
-	RightBracket,
-	TypeIndicator, // :
-	Number,
-	Identifier,
-	Assign,
-	Comma,
-	Keyword,
-	Operator,
-};
-
-struct Token {
-	TokenType type;
-	std::string data;
-
-	size_t line = 0, column = 0;
-	// TODO: store origin (file, line, column)
-
-	Token(TokenType type) : type(type) {}
-	Token(TokenType type, const std::string& data) : type(type), data(data) {}
-};
-
-class Lexer {
-public:
-	std::istream& m_stream;
-	size_t m_line = 1, m_column = 0;
-
-	Lexer(std::istream& stream) : m_stream(stream) {}
-
-	inline void new_line() { ++m_line; m_column = 0; }
-	inline void next_char(char c) {
-		if (c == '\n')
-			new_line();
-		else if (c == '\t')
-			m_column += 4; // sorry for using the correct size
-		else
-			++m_column;
-	}
-	void eat_until(std::string& buffer, char target);
-	std::optional<Token> get_token();
-	std::vector<Token> get_tokens();
-};
+// TODO: get rid of this >:)
+#include <variant>
+#include "utils.hpp"
+#include "lexer.hpp"
 
 struct Type {
-	// TODO: enum
+	// TODO: enum for built in types, etc
 	std::string name;
 };
 
@@ -194,32 +147,3 @@ public:
 
 	void parse();
 };
-
-class Compiler {
-public:
-	std::ostream& m_stream;
-	Parser& m_parser;
-	Function* m_cur_function = nullptr;
-	// TODO: not
-	size_t m_var_counter = 0;
-	std::unordered_map<std::string, int> m_variables;
-
-	Compiler(std::ostream& output, Parser& parser) : m_stream(output), m_parser(parser) {}
-
-	template <class... Args>
-	void write(const std::string_view& format, Args&&... args) {
-		format_to(m_stream, format, args...);
-		m_stream << '\n';
-	}
-
-	void compile_expression(Expression&, bool ref = false);
-	void compile_statement(Statement&);
-	void compile_function(Function&);
-
-	void generate_return(const Function& function);
-
-	void compile();
-
-};
-
-void print_expression(const Expression& exp, const int depth = 0);

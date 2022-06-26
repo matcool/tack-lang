@@ -44,6 +44,6 @@ void print(const std::string_view& format, Args&&... args) {
 	format_to(std::cout, format, args...);
 }
 
-void print(const char c) {
+inline void print(const char c) {
 	std::cout << c;
 }

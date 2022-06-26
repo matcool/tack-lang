@@ -3,6 +3,7 @@
 #include <optional>
 #include <stdint.h>
 #include <vector>
+#include "format.hpp"
 
 // TODO: for some reason i dont have std::source_location in -std=c++20 yet
 namespace {
