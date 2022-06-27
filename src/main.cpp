@@ -1,6 +1,7 @@
 // could just include compiler.hpp since that includes everything else
 #include "lexer.hpp"
 #include "parser.hpp"
+#include "checker.hpp"
 #include "compiler.hpp"
 
 #include "enums.hpp"
@@ -71,6 +72,9 @@ int main(int argc, char** argv) {
 			}
 		}
 	}
+
+	TypeChecker checker(parser);
+	checker.check();
 
 	std::stringstream stream;
 	Compiler compiler(stream, parser);

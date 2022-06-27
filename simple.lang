@@ -1,0 +1,19 @@
+fn foo(): i32 {
+	return 12;
+}
+
+fn bar() {
+	return;
+}
+
+fn baz() {
+
+}
+
+fn add(a: i32, b: i32): i32 {
+	return a + b;
+}
+
+fn buz(): i32 {
+	return add(1, 2);
+}

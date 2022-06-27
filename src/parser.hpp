@@ -9,6 +9,9 @@
 struct Type {
 	// TODO: enum for built in types, etc
 	std::string name;
+	bool reference = false;
+
+	bool operator==(const Type&) const = default;
 };
 
 struct Variable {

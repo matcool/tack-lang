@@ -32,8 +32,10 @@ void Compiler::compile_function(Function& function) {
 
 void Compiler::compile_statement(Statement& statement) {
 	if (statement.type == StatementType::Return) {
-		// output should be in eax
-		compile_expression(statement.expressions[0]);
+		if (!statement.expressions.empty()) {
+			// output should be in eax
+			compile_expression(statement.expressions[0]);
+		}
 		// shouldnt ever be null
 		if (m_cur_function)
 			generate_return(*m_cur_function);

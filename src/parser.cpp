@@ -101,10 +101,10 @@ Statement Parser::parse_statement() {
 	if (first.type == TokenType::Keyword && first.data == "return") {
 		m_tokens.get();
 		assert(m_cur_function, "Return statement cannot appear outside function");
-		return Statement {
-			StatementType::Return,
-			{ parse_expression() }
-		};
+		Statement stmt { StatementType::Return };
+		if (m_tokens.peek().type != TokenType::Semicolon)
+			stmt.expressions.push_back(parse_expression());
+		return stmt;
 	} else {
 		const auto exp = parse_expression();
 		return Statement {
