@@ -41,7 +41,8 @@ int main(int argc, char** argv) {
 
 			"Usage: {} input [output]\n\n"
 			
-			"  input - input file to compile\n",
+			"  input - input file to compile\n"
+			"  output - output asm file, if not provided will just print to stdout\n",
 			args[0]
 		);
 		return 1;
@@ -81,7 +82,24 @@ int main(int argc, char** argv) {
 	compiler.compile();
 
 	print("Compiler finished\n");
-	print("{}\n", stream.str());
+
+	if (args.size() > 2) {
+		std::ofstream file(args[2]);
+		file << 
+			"section .text\n"
+			"global _start\n"
+			"\n"
+			"_start:\n"
+			"	call main\n"
+			"	mov ebx, eax\n"
+			"	mov al, 1\n"
+			"	int 0x80\n"
+			"\n"
+			"; -- generated asm --\n\n";
+		file << stream.str();
+	} else {
+		print("{}\n", stream.str());
+	}
 
 	return 0;
 }

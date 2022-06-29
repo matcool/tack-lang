@@ -3,3 +3,6 @@
 *.pdb
 *.exp
 *.lib
+*.o
+*.asm
+main
