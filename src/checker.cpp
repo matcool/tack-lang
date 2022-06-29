@@ -85,6 +85,22 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 			return it->type;
 		}
 		return it->type;
+	} else if (expression.type == ExpressionType::Declaration) {
+		const auto& data = std::get<Expression::DeclarationData>(expression.data);
+		parent.scope.variables.push_back(data.var);
+
+		auto type = data.var.type;
+		type.reference = true;
+		return type;
+	} else if (expression.type == ExpressionType::Assignment) {
+		const auto rhs_type = check_expression(expression.children[1], parent);
+		const auto lhs_type = check_expression(expression.children[0], parent, rhs_type);
+		assert(lhs_type.reference, "should be reference");
+		assert(lhs_type.name == rhs_type.name, "not same type...");
+		
+		auto type = lhs_type;
+		type.reference = false;
+		return type;
 	} else {
 		print("what the heck is this expression?? {}\n", expression.type);
 		assert(false, "poop");

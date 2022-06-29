@@ -119,7 +119,7 @@ void Compiler::compile_expression(Expression& exp, bool by_reference) {
 			assert(false, "unknown variable!");
 		static constexpr auto format_offset = [](int off) -> std::string {
 			if (off == 0) return "";
-			else if (off < 0) return format("- {}", off);
+			else if (off < 0) return format("- {}", -off);
 			else return format("+ {}", off);
 		};
 		if (by_reference)

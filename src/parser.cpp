@@ -164,7 +164,6 @@ Expression Parser::parse_exp_primary() {
 		return exp;
 	} else if (token.type == TokenType::Keyword && token.data == "let") {
 		const auto var = parse_var_decl();
-		m_cur_function->scope.variables.push_back(var);
 		return Expression {
 			ExpressionType::Declaration,
 			Expression::DeclarationData { var },

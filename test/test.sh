@@ -6,6 +6,8 @@ then
 	exit
 fi
 
+cd "$(dirname $0)"
+
 set -e
 
 echo "\e[32m- Running compiler\e[m"
