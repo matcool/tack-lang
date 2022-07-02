@@ -6,12 +6,6 @@ bool is_whitespace(char c) {
 	return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v';
 }
 
-auto& operator<<(std::ostream& stream, const Token& token) {
-	stream << token.line << ':' << token.column << ' ' << token.type;
-	if (!token.data.empty()) stream << " \"" << token.data << '"';
-	return stream;
-}
-
 void Lexer::eat_until(std::string& buffer, char target) {
 	while (m_stream.good()) {
 		char c;
@@ -108,7 +102,7 @@ std::optional<Token> Lexer::get_token() {
 					} else
 						break;
 				}
-				if (str == "fn" || str == "let" || str == "return")
+				if (str == "fn" || str == "let" || str == "return" || str == "true" || str == "false")
 					return ret(Token(TokenType::Keyword, str));
 				else
 					return ret(Token(TokenType::Identifier, str));

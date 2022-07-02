@@ -34,6 +34,8 @@ void print_expression(const Expression& exp, const int depth = 0) {
 }
 
 int main(int argc, char** argv) {
+	std::cout << std::boolalpha;
+
 	auto args = ArrayView<char*>(argv, argc);
 	if (args.size() < 2) {
 		print(

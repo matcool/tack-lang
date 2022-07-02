@@ -30,7 +30,7 @@ void Parser::error_at_token(const Token& token, const std::string_view& msg) {
 		print("^ here\n");
 	} else
 		print('\n');
-	std::abort();
+	std::exit(1);
 }
 
 Token& Parser::expect_token_type(Token& token, TokenType type, const std::string_view& msg) {
@@ -167,6 +167,12 @@ Expression Parser::parse_exp_primary() {
 		return Expression {
 			ExpressionType::Declaration,
 			Expression::DeclarationData { var },
+			{}
+		};
+	} else if (token.type == TokenType::Keyword && (token.data == "true" || token.data == "false")) {
+		return Expression {
+			ExpressionType::Literal,
+			Expression::LiteralData { token.data == "true" },
 			{}
 		};
 	} else {

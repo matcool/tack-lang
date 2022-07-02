@@ -12,6 +12,19 @@ struct Type {
 	bool reference = false;
 
 	bool operator==(const Type&) const = default;
+	Type add_reference() const {
+		auto result = *this;
+		result.reference = true;
+		return result;
+	}
+	Type remove_reference() const {
+		auto result = *this;
+		result.reference = false;
+		return result;
+	}
+	bool unref_eq(const Type& other) const {
+		return name == other.name;
+	}
 };
 
 struct Variable {
@@ -53,7 +66,7 @@ struct Expression {
 		std::string name;
 	};
 	struct LiteralData {
-		std::variant<int, std::string> value;
+		std::variant<int, bool, std::string> value;
 	};
 	struct OperatorData {
 		OperatorType op_type;

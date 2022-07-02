@@ -1,5 +1,8 @@
 fn main(): i32 {
 	let a: i32 = 9;
 	let b: i32 = 10;
-	return a + b;
+	let c: i32 = 0;
+	c = a;
+	c = 1;
+	return a + b + c;
 }

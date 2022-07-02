@@ -26,7 +26,10 @@ void TypeChecker::check_statement(Statement& stmt, Function& parent) {
 		} else {
 			assert(stmt.expressions.size(), "Expected expression");
 			const auto type = check_expression(stmt.expressions.front(), parent, parent.return_type);
-			if (type != parent.return_type)
+			// TODO: wrap proper reference checking
+			// if ret type is ref then type must be ref
+			// else then if type is ref or not doesnt matter
+			if ((parent.return_type.reference && type != parent.return_type) || (!parent.return_type.reference && !type.unref_eq(parent.return_type)))
 				assert(false, "Type did not match....");
 		}
 	} else if (stmt.type == StatementType::Expression) {
@@ -39,17 +42,22 @@ void TypeChecker::check_statement(Statement& stmt, Function& parent) {
 
 Type TypeChecker::check_expression(Expression& expression, Function& parent, const std::optional<Type> infer_type) {
 	if (expression.type == ExpressionType::Literal) {
-		// TODO: check if its a number
+		const auto& data = std::get<Expression::LiteralData>(expression.data);
 		// TODO: use infer type
-		return Type { .name = "i32" };
+		if (std::holds_alternative<bool>(data.value))
+			return Type { .name = "bool" };
+		else if (std::holds_alternative<int>(data.value))
+			return Type { .name = "i32" };
+		else
+			assert(false, "TODO: string support");
 	} else if (expression.type == ExpressionType::Operator) {
 		const auto& data = std::get<Expression::OperatorData>(expression.data);
 		if (data.op_type == OperatorType::Addition) {
 			const auto lhs_type = check_expression(expression.children[0], parent);
 			const auto rhs_type = check_expression(expression.children[1], parent);
-			if (lhs_type != rhs_type)
+			if (!lhs_type.unref_eq(rhs_type))
 				assert(false, "Epic fail");
-			return lhs_type;
+			return lhs_type.remove_reference();
 		} else {
 			assert(false, "not handled operator");
 		}
@@ -64,7 +72,6 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 		const auto& function = *it;
 		if (function.arguments.size() != expression.children.size())
 			assert(false, "Incorrect number of arguments");
-		print("gonna check call arguments!\n");
 		for (size_t i = 0; i < function.arguments.size(); ++i) {
 			const auto arg_type = function.arguments[i].type;
 			const auto type = check_expression(expression.children[i], parent, arg_type);
@@ -73,7 +80,6 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 		}
 		return function.return_type;
 	} else if (expression.type == ExpressionType::Variable) {
-		// TODO: keep track of variables myself,, so i can know which variables exist up until now, and also auto type
 		const auto& data = std::get<Expression::VariableData>(expression.data);
 		const auto& vars = parent.scope.variables;
 		const auto it = std::find_if(vars.begin(), vars.end(), [&](const auto& var) { return var.name == data.name; });
@@ -82,25 +88,22 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 			const auto it = std::find_if(vars.begin(), vars.end(), [&](const auto& var) { return var.name == data.name; });
 			if (it == vars.end())
 				assert(false, "Unknown variable!");
-			return it->type;
+			return it->type.add_reference();
+		} else {
+			return it->type.add_reference();
 		}
-		return it->type;
 	} else if (expression.type == ExpressionType::Declaration) {
 		const auto& data = std::get<Expression::DeclarationData>(expression.data);
 		parent.scope.variables.push_back(data.var);
 
-		auto type = data.var.type;
-		type.reference = true;
-		return type;
+		return data.var.type.add_reference();
 	} else if (expression.type == ExpressionType::Assignment) {
 		const auto rhs_type = check_expression(expression.children[1], parent);
 		const auto lhs_type = check_expression(expression.children[0], parent, rhs_type);
 		assert(lhs_type.reference, "should be reference");
 		assert(lhs_type.name == rhs_type.name, "not same type...");
 		
-		auto type = lhs_type;
-		type.reference = false;
-		return type;
+		return lhs_type.remove_reference();
 	} else {
 		print("what the heck is this expression?? {}\n", expression.type);
 		assert(false, "poop");
