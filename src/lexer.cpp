@@ -25,8 +25,8 @@ std::optional<Token> Lexer::get_token() {
 		const auto line = m_line;
 		const auto col = m_column;
 		const auto ret = [&](Token token) {
-			token.line = line;
-			token.column = col;
+			token.span.line = line;
+			token.span.column = col;
 			return token;
 		};
 		switch (c) {

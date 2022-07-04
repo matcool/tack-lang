@@ -21,11 +21,15 @@ enum class TokenType {
 	Operator,
 };
 
+struct Span {
+	size_t line = 0, column = 0;
+};
+
 struct Token {
 	TokenType type;
 	std::string data;
 
-	size_t line = 0, column = 0;
+	Span span;
 
 	Token(TokenType type) : type(type) {}
 	Token(TokenType type, const std::string& data) : type(type), data(data) {}

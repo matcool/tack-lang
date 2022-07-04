@@ -76,6 +76,8 @@ struct Expression {
 		std::string function_name;
 	};
 	std::variant<bool, DeclarationData, VariableData, LiteralData, OperatorData, CallData> data;
+	Span span;
+
 	Expression(const ExpressionType type) : type(type) {}
 	template <class T>
 	Expression(const ExpressionType type, T&& data, const std::vector<Expression> children) : 
@@ -90,6 +92,7 @@ enum class StatementType {
 struct Statement {
 	StatementType type;
 	std::vector<Expression> expressions;
+	Span span;
 };
 
 struct Function;

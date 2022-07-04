@@ -3,6 +3,10 @@
 
 class TypeChecker {
 	Parser& m_parser;
+	
+	[[noreturn]] void error_at_exp(const Expression& token, const std::string_view& msg);
+	[[noreturn]] void error_at_stmt(const Statement& stmt, const std::string_view& msg);
+	[[noreturn]] void error_at(const Span& span, const std::string_view& msg);
 public:
 	TypeChecker(Parser& parser);
 

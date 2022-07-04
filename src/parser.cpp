@@ -8,28 +8,9 @@ Parser::Parser(const std::string_view& file_name, ArrayStream<Token> tokens)
 
 void Parser::error_at_token(const Token& token, const std::string_view& msg) {
 	print("[error] {}", msg);
-	if (!m_file_name.empty() && token.line) {
-		print(" @ {}:{}:{}\n", m_file_name, token.line, token.column);
-		std::ifstream file(m_file_name);
-		std::string line;
-		size_t counter = 1;
-		while (std::getline(file, line)) {
-			if (counter == token.line)
-				break;
-			++counter;
-		}
-		for (const auto c : line) {
-			if (c == '\t')
-				print("    ");
-			else
-				print("{}", c);
-		}
-		print("\n");
-		for (size_t i = 1; i < token.column; ++i)
-			print(' ');
-		print("^ here\n");
-	} else
-		print('\n');
+	if (!m_file_name.empty())
+		print_file_span(m_file_name, token.span);
+	print('\n');
 	std::exit(1);
 }
 
@@ -102,6 +83,7 @@ Statement Parser::parse_statement() {
 		m_tokens.get();
 		assert(m_cur_function, "Return statement cannot appear outside function");
 		Statement stmt { StatementType::Return };
+		stmt.span = first.span;
 		if (m_tokens.peek().type != TokenType::Semicolon)
 			stmt.expressions.push_back(parse_expression());
 		return stmt;
@@ -182,11 +164,14 @@ Expression Parser::parse_exp_primary() {
 }
 
 Expression Parser::parse_exp_stage2() {
-	const auto factor = parse_exp_primary();
+	const auto span = m_tokens.peek().span;
+	auto factor = parse_exp_primary();
+	factor.span = span;
 	const auto& next = m_tokens.peek();
 	if (next.type == TokenType::Operator
 		&& (next.data == "/" || next.data == "*")) {
 		Expression exp(ExpressionType::Operator);
+		exp.span = next.span;
 		exp.data = Expression::OperatorData { op_type_from_token(m_tokens.get()) };
 		exp.children.push_back(factor);
 		exp.children.push_back(parse_exp_stage2());
@@ -197,11 +182,14 @@ Expression Parser::parse_exp_stage2() {
 }
 
 Expression Parser::parse_exp_stage1() {
-	const auto term = parse_exp_stage2();
+	const auto span = m_tokens.peek().span;
+	auto term = parse_exp_stage2();
+	term.span = span;
 	const auto& next = m_tokens.peek();
 	if (next.type == TokenType::Operator
 		&& (next.data == "+" || next.data == "-")) {
 		Expression exp(ExpressionType::Operator);
+		exp.span = next.span;
 		exp.data = Expression::OperatorData { op_type_from_token(m_tokens.get()) };
 		exp.children.push_back(term);
 		exp.children.push_back(parse_exp_stage1());
@@ -212,11 +200,14 @@ Expression Parser::parse_exp_stage1() {
 }
 
 Expression Parser::parse_expression() {
-	const auto term = parse_exp_stage1();
+	const auto span = m_tokens.peek().span;
+	auto term = parse_exp_stage1();
+	term.span = span;
 	const auto& next = m_tokens.peek();
 	if (next.type == TokenType::Assign) {
 		m_tokens.get();
 		Expression exp(ExpressionType::Assignment);
+		exp.span = next.span;
 		exp.children.push_back(term);
 		exp.children.push_back(parse_expression());
 		return exp;

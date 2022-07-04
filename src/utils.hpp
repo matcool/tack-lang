@@ -130,3 +130,7 @@ template <class T>
 auto enumerate(T&& container) {
 	return Enumerator(std::forward<T>(container));
 }
+
+struct Span;
+
+void print_file_span(const std::string& file_name, const Span& span);
