@@ -35,7 +35,7 @@ void TypeChecker::check_statement(Statement& stmt, Function& parent) {
 			// TODO: wrap proper reference checking
 			// if ret type is ref then type must be ref
 			// else then if type is ref or not doesnt matter
-			if ((parent.return_type.reference && type != parent.return_type) || (!parent.return_type.reference && !type.unref_eq(parent.return_type)))
+			if (parent.return_type.reference ? type != parent.return_type : !type.unref_eq(parent.return_type))
 				error_at_stmt(stmt, format("Type mismatch, expected {} got {}", parent.return_type, type));
 		}
 	} else if (stmt.type == StatementType::Expression) {
@@ -49,7 +49,7 @@ void TypeChecker::check_statement(Statement& stmt, Function& parent) {
 		for (auto& child : data.children)
 			check_statement(child, parent);
 	} else {
-		error_at_stmt(stmt, format("what the heck {}\n", stmt.type));
+		error_at_stmt(stmt, format("what the heck {}", stmt.type));
 	}
 }
 

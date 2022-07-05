@@ -10,6 +10,7 @@ public:
 	// TODO: not
 	size_t m_var_counter = 0;
 	std::unordered_map<std::string, int> m_variables;
+	size_t m_label_counter = 0;
 
 	Compiler(std::ostream& output, Parser& parser) : m_stream(output), m_parser(parser) {}
 

@@ -12,6 +12,7 @@ void Compiler::compile_function(Function& function) {
 	write("{}:", function.name);
 	m_cur_function = &function;
 	m_var_counter = 0;
+	m_label_counter = 0;
 	m_variables.clear();
 	for (size_t i = 0; i < function.arguments.size(); ++i) {
 		m_variables[function.arguments[i].name] = -(function.arguments.size() - i - 1 + 2);
@@ -41,6 +42,14 @@ void Compiler::compile_statement(Statement& statement) {
 			generate_return(*m_cur_function);
 	} else if (statement.type == StatementType::Expression) {
 		compile_expression(statement.expressions[0]);
+	} else if (statement.type == StatementType::If) {
+		compile_expression(statement.expressions[0]);
+		const auto label = format("{}_if_end_{}", m_cur_function->name, m_label_counter++);
+		write("cmp al, 1");
+		write("jne {}", label);
+		for (auto& child : std::get<Statement::IfData>(statement.data).children)
+			compile_statement(child);
+		write("{}:", label);
 	} else {
 		assert(false, "unimplemented");
 	}
