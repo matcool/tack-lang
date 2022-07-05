@@ -102,7 +102,8 @@ std::optional<Token> Lexer::get_token() {
 					} else
 						break;
 				}
-				if (str == "fn" || str == "let" || str == "return" || str == "true" || str == "false")
+				// TODO: clean this up
+				if (str == "fn" || str == "let" || str == "return" || str == "true" || str == "false" || str == "if")
 					return ret(Token(TokenType::Keyword, str));
 				else
 					return ret(Token(TokenType::Identifier, str));

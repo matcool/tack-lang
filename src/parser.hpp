@@ -75,7 +75,7 @@ struct Expression {
 		// TODO: have the function name be an expression?
 		std::string function_name;
 	};
-	std::variant<bool, DeclarationData, VariableData, LiteralData, OperatorData, CallData> data;
+	std::variant<std::monostate, DeclarationData, VariableData, LiteralData, OperatorData, CallData> data;
 	Span span;
 
 	Expression(const ExpressionType type) : type(type) {}
@@ -87,12 +87,18 @@ struct Expression {
 enum class StatementType {
 	Expression, // statement is just an expression
 	Return,     // statement returns an expression
+	If,
 };
 
 struct Statement {
 	StatementType type;
 	std::vector<Expression> expressions;
 	Span span;
+	struct IfData {
+		// TODO: make this a scope, that is if they hold statements
+		std::vector<Statement> children;
+	};
+	std::variant<std::monostate, IfData> data;
 };
 
 struct Function;
@@ -123,6 +129,8 @@ public:
 	Variable parse_var_decl();
 	void parse_function(Function& function);
 	Statement parse_statement();
+
+	std::vector<Statement> parse_block();
 
 	Type parse_type();
 

@@ -70,8 +70,11 @@ Variable Parser::parse_var_decl() {
 void Parser::parse_function(Function& function) {
 	m_cur_function = &function;
 	while (m_tokens.peek().type != TokenType::RightBracket) {
-		function.statements.push_back(parse_statement());
-		expect_token_type(m_tokens.get(), TokenType::Semicolon, "Expected semicolon");
+		const auto stmt = parse_statement();
+		function.statements.push_back(stmt);
+		// TODO: uhh not this
+		if (stmt.type != StatementType::If)
+			expect_token_type(m_tokens.get(), TokenType::Semicolon, "Expected semicolon");
 	}
 	m_tokens.get();
 	m_cur_function = nullptr;
@@ -87,6 +90,13 @@ Statement Parser::parse_statement() {
 		if (m_tokens.peek().type != TokenType::Semicolon)
 			stmt.expressions.push_back(parse_expression());
 		return stmt;
+	} else if (first.type == TokenType::Keyword && first.data == "if") {
+		m_tokens.get();
+		Statement stmt { StatementType::If };
+		stmt.span = first.span;
+		stmt.expressions.push_back(parse_expression());
+		stmt.data = Statement::IfData { .children = parse_block() };
+		return stmt;
 	} else {
 		const auto exp = parse_expression();
 		return Statement {
@@ -94,6 +104,17 @@ Statement Parser::parse_statement() {
 			{ exp }
 		};
 	}
+}
+
+std::vector<Statement> Parser::parse_block() {
+	std::vector<Statement> result;
+	expect_token_type(m_tokens.get(), TokenType::LeftBracket, "Expected left bracket");
+	while (m_tokens.peek().type != TokenType::RightBracket) {
+		result.push_back(parse_statement());
+		expect_token_type(m_tokens.get(), TokenType::Semicolon, "Expected semicolon");
+	}
+	m_tokens.get(); // should be right bracket
+	return result;
 }
 
 OperatorType op_type_from_token(const Token& token) {
