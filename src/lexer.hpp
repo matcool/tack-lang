@@ -33,6 +33,10 @@ struct Token {
 
 	Token(TokenType type) : type(type) {}
 	Token(TokenType type, const std::string& data) : type(type), data(data) {}
+
+	bool operator==(const Token& other) const {
+		return type == other.type && data == other.data;
+	}
 };
 
 class Lexer {

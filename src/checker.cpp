@@ -65,12 +65,18 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 			error_at_exp(expression, "TODO: strings");
 	} else if (expression.type == ExpressionType::Operator) {
 		const auto& data = std::get<Expression::OperatorData>(expression.data);
-		if (data.op_type == OperatorType::Addition) {
+		if (data.op_type == OperatorType::Addition || data.op_type == OperatorType::Subtraction || data.op_type == OperatorType::Multiplication || data.op_type == OperatorType::Division) {
 			const auto lhs_type = check_expression(expression.children[0], parent);
 			const auto rhs_type = check_expression(expression.children[1], parent);
 			if (!lhs_type.unref_eq(rhs_type))
 				error_at_exp(expression, format("Types didnt match {} {}", lhs_type, rhs_type));
 			return lhs_type.remove_reference();
+		} else if (data.op_type == OperatorType::Equals) {
+			const auto lhs_type = check_expression(expression.children[0], parent);
+			const auto rhs_type = check_expression(expression.children[1], parent);
+			if (!lhs_type.unref_eq(rhs_type))
+				error_at_exp(expression, format("Types didnt match {} {}", lhs_type, rhs_type));
+			return Type { "bool" };
 		} else {
 			error_at_exp(expression, "Unhandled operator oops");
 		}

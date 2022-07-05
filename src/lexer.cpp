@@ -43,8 +43,10 @@ std::optional<Token> Lexer::get_token() {
 			}
 			case ',': return ret(TokenType::Comma);
 			case '=': {
-				if (m_stream.peek() == '=')
-					assert(false, "TODO: implement ==");
+				if (m_stream.peek() == '=') {
+					m_stream.get(c);
+					return ret(Token(TokenType::Operator, "=="));
+				}
 				return ret(TokenType::Assign);
 			}
 			case '(': return ret(TokenType::LeftParen);

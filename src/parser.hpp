@@ -51,6 +51,8 @@ enum class OperatorType {
 	Subtraction,
 	Multiplication,
 	Division,
+	Equals,
+	NotEquals,
 };
 
 struct Expression {
@@ -134,14 +136,8 @@ public:
 
 	Type parse_type();
 
-	// impl based on https://en.wikipedia.org/wiki/Recursive_descent_parser
-	// expression = stage1 ["=" expression]
 	Expression parse_expression();
-	// stage1 = stage2 ["+"|"-" stage1]
-	Expression parse_exp_stage1();
-	// stage2 = primary ["/"|"*" stage2]
-	Expression parse_exp_stage2();
-	// primary = identifier | literal | unary primary | "(" expression ")"
+	Expression parse_exp_inner(int prio);
 	Expression parse_exp_primary();
 
 	void error_at_token(const Token& token, const std::string_view& msg);

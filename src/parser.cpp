@@ -125,6 +125,8 @@ OperatorType op_type_from_token(const Token& token) {
 	if (token.data == "/") return OperatorType::Division;
 	if (token.data == "!") return OperatorType::Not;
 	if (token.data == "~") return OperatorType::Bitflip;
+	if (token.data == "==") return OperatorType::Equals;
+	if (token.data == "!=") return OperatorType::NotEquals;
 	return {};
 }
 
@@ -184,55 +186,46 @@ Expression Parser::parse_exp_primary() {
 	std::abort();
 }
 
-Expression Parser::parse_exp_stage2() {
-	const auto span = m_tokens.peek().span;
-	auto factor = parse_exp_primary();
-	factor.span = span;
-	const auto& next = m_tokens.peek();
-	if (next.type == TokenType::Operator
-		&& (next.data == "/" || next.data == "*")) {
-		Expression exp(ExpressionType::Operator);
-		exp.span = next.span;
-		exp.data = Expression::OperatorData { op_type_from_token(m_tokens.get()) };
-		exp.children.push_back(factor);
-		exp.children.push_back(parse_exp_stage2());
-		return exp;
-	} else {
-		return factor;
+// not very elegant but oh well
+static constexpr int max_precedence = 3;
+int precedence_for_token(const Token& token) {
+	if (token.type == TokenType::Assign) {
+		return 0;
+	} else if (token.type == TokenType::Operator) {
+		if (token.data == "==" || token.data == "!=")
+			return 1;
+		if (token.data == "+" || token.data == "-")
+			return 2;
+		if (token.data == "*" || token.data == "/")
+			return 3;
 	}
+	return 999;
 }
 
-Expression Parser::parse_exp_stage1() {
+Expression Parser::parse_exp_inner(int prio) {
+	if (prio > max_precedence) return parse_exp_primary();
 	const auto span = m_tokens.peek().span;
-	auto term = parse_exp_stage2();
-	term.span = span;
+	auto part = parse_exp_inner(prio + 1);
+	part.span = span;
 	const auto& next = m_tokens.peek();
-	if (next.type == TokenType::Operator
-		&& (next.data == "+" || next.data == "-")) {
+	if (precedence_for_token(next) == prio) {
+		m_tokens.get();
 		Expression exp(ExpressionType::Operator);
 		exp.span = next.span;
-		exp.data = Expression::OperatorData { op_type_from_token(m_tokens.get()) };
-		exp.children.push_back(term);
-		exp.children.push_back(parse_exp_stage1());
+		exp.children.push_back(part);
+		if (next.type == TokenType::Assign) {
+			exp.type = ExpressionType::Assignment;
+			exp.children.push_back(parse_exp_inner(prio));
+		} else if (next.type == TokenType::Operator) {
+			exp.data = Expression::OperatorData { op_type_from_token(next) };
+			exp.children.push_back(parse_exp_inner(prio));
+		}
 		return exp;
 	} else {
-		return term;
+		return part;
 	}
 }
 
 Expression Parser::parse_expression() {
-	const auto span = m_tokens.peek().span;
-	auto term = parse_exp_stage1();
-	term.span = span;
-	const auto& next = m_tokens.peek();
-	if (next.type == TokenType::Assign) {
-		m_tokens.get();
-		Expression exp(ExpressionType::Assignment);
-		exp.span = next.span;
-		exp.children.push_back(term);
-		exp.children.push_back(parse_expression());
-		return exp;
-	} else {
-		return term;
-	}
+	return parse_exp_inner(0);
 }

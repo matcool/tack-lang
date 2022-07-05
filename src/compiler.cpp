@@ -108,6 +108,13 @@ void Compiler::compile_expression(Expression& exp, bool by_reference) {
 			compile_expression(exp.children[1]);
 			write("pop ecx");
 			write("imul eax, ecx");
+		} else if (data.op_type == OperatorType::Equals) {
+			compile_expression(exp.children[0]);
+			write("push eax");
+			compile_expression(exp.children[1]);
+			write("pop ecx");
+			write("cmp eax, ecx");
+			write("sete al");
 		} else {
 			assert(false, "unimplemented");
 		}

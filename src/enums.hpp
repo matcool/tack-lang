@@ -52,6 +52,8 @@ inline const char* enum_name(const OperatorType& t) {
 		case OperatorType::Subtraction: return "Subtraction";
 		case OperatorType::Multiplication: return "Multiplication";
 		case OperatorType::Division: return "Division";
+		case OperatorType::Equals: return "Equals";
+		case OperatorType::NotEquals: return "NotEquals";
 	}
 	return "";
 }
