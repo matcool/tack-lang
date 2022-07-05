@@ -40,6 +40,14 @@ void TypeChecker::check_statement(Statement& stmt, Function& parent) {
 		}
 	} else if (stmt.type == StatementType::Expression) {
 		check_expression(stmt.expressions[0], parent);
+	} else if (stmt.type == StatementType::If) {
+		auto& data = std::get<Statement::IfData>(stmt.data);
+		const auto type = check_expression(stmt.expressions[0], parent, Type { "bool" });
+		if (type != Type { "bool" })
+			error_at_exp(stmt.expressions.front(), "Expected bool expression");
+		// TODO: proper scopes
+		for (auto& child : data.children)
+			check_statement(child, parent);
 	} else {
 		error_at_stmt(stmt, format("what the heck {}\n", stmt.type));
 	}
