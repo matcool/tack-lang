@@ -1,6 +1,7 @@
 #include "compiler.hpp"
 #include "enums.hpp"
 #include "format.hpp"
+#include <array>
 
 void Compiler::compile() {
 	for (auto& function : m_parser.m_functions) {
@@ -152,6 +153,16 @@ void Compiler::compile_expression(Expression& exp, bool by_reference) {
 			write("push eax");
 		}
 		const auto& target_name = std::get<Expression::CallData>(exp.data).function_name;
+		// TODO: better builtins
+		if (target_name == "syscall") {
+			// TODO: save ebp, since its used as the 7th arg
+			std::array regs{"eax", "ebx", "ecx", "edx", "esi", "edi"};
+			for (size_t i = 0; i < exp.children.size(); ++i) {
+				write("pop {}", regs.at(exp.children.size() - 1 - i));
+			}
+			write("int 0x80");
+			return;
+		}
 		write("call {}", target_name);
 		// clean up stack if theres arguments
 		for (const auto& function : m_parser.m_functions) {

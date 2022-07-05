@@ -82,6 +82,10 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 		}
 	} else if (expression.type == ExpressionType::Call) {
 		const auto& data = std::get<Expression::CallData>(expression.data);
+		// TODO: better way of having builtins..
+		if (data.function_name == "syscall") {
+			return Type { "i32" };
+		}
 		const auto& funcs = m_parser.m_functions;
 		const auto it = std::find_if(funcs.begin(), funcs.end(), 
 			[&](const auto& function) { return function.name == data.function_name; }
