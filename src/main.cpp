@@ -33,21 +33,55 @@ void print_expression(const Expression& exp, const int depth = 0) {
 	}
 }
 
+auto& operator<<(std::ostream& stream, const Token& token) {
+	stream << token.span.line << ':' << token.span.column << ' ';
+	stream << enum_name(token.type);
+	if (!token.data.empty()) stream << " \"" << token.data << '"';
+	return stream;
+}
+
 int main(int argc, char** argv) {
 	std::cout << std::boolalpha;
 
 	auto args = ArrayView<char*>(argv, argc);
 	if (args.size() < 2) {
 		print(
-			"Silly compiler for a silly language.\n\n"
-
-			"Usage: {} input [output]\n\n"
-			
+			"Silly compiler for a silly language.\n"
+			"\n"
+			"Usage: {} input [opts]\n"
+			"\n"
 			"  input - input file to compile\n"
-			"  output - output asm file, if not provided will just print to stdout\n",
-			args[0]
+			"  opts:\n"
+			"    -o output - output asm file\n"
+			"    --show-tokens - prints lexer tokens\n"
+			"    --show-ast - prints parser ast\n"
+			"    --show-asm - prints output asm\n"
+			, args[0]
 		);
 		return 1;
+	}
+
+	bool show_tokens = false;
+	bool show_ast = false;
+	bool show_asm = false;
+	std::string output_file;
+	auto rest = args.slice(2);
+	for (size_t i = 0; i < rest.size(); ++i) {
+		const std::string_view arg = rest[i];
+		if (arg == "-o") {
+			assert(i + 1 < rest.size(), "Expected file name");
+			output_file = rest[i + 1];
+			++i;
+		} else if (arg == "--show-tokens") {
+			show_tokens = true;
+		} else if (arg == "--show-ast") {
+			show_ast = true;
+		} else if (arg == "--show-asm") {
+			show_asm = true;
+		} else {
+			print("Unknown option \"{}\"\n", arg);
+			return 1;
+		}
 	}
 
 	auto input_file = std::ifstream(args[1]);
@@ -55,9 +89,11 @@ int main(int argc, char** argv) {
 	Lexer lexer(input_file);
 	auto tokens = lexer.get_tokens();
 	print("File tokenized\n");
-	// for (auto& token : tokens) {
-	// 	print(" - {}\n", token);
-	// }
+	if (show_tokens) {
+		for (auto& token : tokens) {
+			print(" - {}\n", token);
+		}
+	}
 
 	input_file.close();
 
@@ -66,12 +102,14 @@ int main(int argc, char** argv) {
 	parser.parse();
 	print("File parsed\n");
 
-	for (auto& function : parser.m_functions) {
-		print("Function {}: {}\n", function.name, function.return_type.name);
-		for (auto& statement : function.statements) {
-			print("  {}\n", enum_name(statement.type));
-			for (auto& expression : statement.expressions) {
-				print_expression(expression, 2);
+	if (show_ast) {
+		for (auto& function : parser.m_functions) {
+			print("Function {}: {}\n", function.name, function.return_type.name);
+			for (auto& statement : function.statements) {
+				print("  {}\n", enum_name(statement.type));
+				for (auto& expression : statement.expressions) {
+					print_expression(expression, 2);
+				}
 			}
 		}
 	}
@@ -85,8 +123,8 @@ int main(int argc, char** argv) {
 
 	print("Compiler finished\n");
 
-	if (args.size() > 2) {
-		std::ofstream file(args[2]);
+	if (!output_file.empty()) {
+		std::ofstream file(output_file);
 		file << 
 			"section .text\n"
 			"global _start\n"
@@ -99,7 +137,7 @@ int main(int argc, char** argv) {
 			"\n"
 			"; -- generated asm --\n\n";
 		file << stream.str();
-	} else {
+	} else if (show_asm) {
 		print("{}\n", stream.str());
 	}
 
