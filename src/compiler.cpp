@@ -7,6 +7,10 @@ void Compiler::compile() {
 	for (auto& function : m_parser.m_functions) {
 		compile_function(function);
 	}
+	write("section .data");
+	for (size_t i = 0; i < m_strings.size(); ++i) {
+		write("data_{}: db \"{}\"", i, m_strings[i]);
+	}
 }
 
 void Compiler::compile_function(Function& function) {
@@ -76,6 +80,10 @@ void Compiler::compile_expression(Expression& exp, bool by_reference) {
 				write("mov eax, {}", value);
 			else if constexpr (std::is_same_v<T, bool>)
 				write("mov al, {}", int(value));
+			else if constexpr (std::is_same_v<T, std::string>) {
+				write("mov eax, data_{}", m_data_counter++);
+				m_strings.push_back(value);
+			}
 		}, data.value);
 	} else if (exp.type == ExpressionType::Operator) {
 		const auto& data = std::get<Expression::OperatorData>(exp.data);

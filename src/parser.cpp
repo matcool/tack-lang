@@ -136,6 +136,10 @@ Expression Parser::parse_exp_primary() {
 		Expression exp(ExpressionType::Literal);
 		exp.data = Expression::LiteralData { std::stoi(token.data) };
 		return exp;
+	} else if (token.type == TokenType::String) {
+		Expression exp(ExpressionType::Literal);
+		exp.data = Expression::LiteralData { token.data };
+		return exp;
 	} else if (token.type == TokenType::Identifier) {
 		if (m_tokens.peek().type == TokenType::LeftParen) {
 			m_tokens.get();

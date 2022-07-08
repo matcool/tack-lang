@@ -11,6 +11,8 @@ public:
 	size_t m_var_counter = 0;
 	std::unordered_map<std::string, int> m_variables;
 	size_t m_label_counter = 0;
+	size_t m_data_counter = 0;
+	std::vector<std::string> m_strings;
 
 	Compiler(std::ostream& output, Parser& parser) : m_stream(output), m_parser(parser) {}
 
