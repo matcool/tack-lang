@@ -1,4 +1,0 @@
-fn main(): i32 {
-	syscall(4, 1, "hello", 5);
-	return 0;
-}

@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
 	auto args = ArrayView<char*>(argv, argc);
 	if (args.size() < 2) {
 		print(
-			"Silly compiler for a silly language.\n"
+			"tack compiler. very silly language\n"
 			"\n"
 			"Usage: {} input [opts]\n"
 			"\n"
