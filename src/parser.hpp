@@ -55,6 +55,9 @@ enum class OperatorType {
 	NotEquals,
 };
 
+template <auto enum_value>
+struct MatchValue {};
+
 struct Expression {
 	ExpressionType type;
 	std::vector<Expression> children;
@@ -85,6 +88,21 @@ struct Expression {
 	template <class T>
 	Expression(const ExpressionType type, T&& data, const std::vector<Expression> children) : 
 		type(type), children(children), data(std::forward<T>(data)) {}
+
+	template <class... Callbacks>
+	decltype(auto) match(Callbacks&&... callbacks) {
+		const overloaded ov { callbacks... };
+		if (std::holds_alternative<std::monostate>(data)) {
+			if (type == ExpressionType::Assignment) {
+				return ov(MatchValue<ExpressionType::Assignment>{});
+			} else {
+				assert(false, "Missing data on Expression");
+				std::exit(1);
+			}
+		} else {
+			return std::visit(ov, data);
+		}
+	}
 };
 
 enum class StatementType {
