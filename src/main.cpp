@@ -3,6 +3,7 @@
 #include "parser.hpp"
 #include "checker.hpp"
 #include "compiler.hpp"
+#include "evaluator.hpp"
 
 #include "enums.hpp"
 #include "format.hpp"
@@ -56,6 +57,7 @@ int main(int argc, char** argv) {
 			"    --show-tokens - prints lexer tokens\n"
 			"    --show-ast - prints parser ast\n"
 			"    --show-asm - prints output asm\n"
+			"    --eval - uses evaluator\n"
 			, args[0]
 		);
 		return 1;
@@ -64,6 +66,7 @@ int main(int argc, char** argv) {
 	bool show_tokens = false;
 	bool show_ast = false;
 	bool show_asm = false;
+	bool evaluate = false;
 	std::string output_file;
 	auto rest = args.slice(2);
 	for (size_t i = 0; i < rest.size(); ++i) {
@@ -78,6 +81,8 @@ int main(int argc, char** argv) {
 			show_ast = true;
 		} else if (arg == "--show-asm") {
 			show_asm = true;
+		} else if (arg == "--eval") {
+			evaluate = true;
 		} else {
 			print("Unknown option \"{}\"\n", arg);
 			return 1;
@@ -85,6 +90,10 @@ int main(int argc, char** argv) {
 	}
 
 	auto input_file = std::ifstream(args[1]);
+	if (!input_file.is_open()) {
+		print("File \"{}\" could not be opened\n", args[1]);
+		return 1;
+	}
 
 	Lexer lexer(input_file);
 	auto tokens = lexer.get_tokens();
@@ -117,28 +126,34 @@ int main(int argc, char** argv) {
 	TypeChecker checker(parser);
 	checker.check();
 
-	std::stringstream stream;
-	Compiler compiler(stream, parser);
-	compiler.compile();
+	if (evaluate) {
+		Evaluator evaluator(parser);
+		const int result = evaluator.run();
+		print("Program returned: {}\n", result);
+	} else {
+		std::stringstream stream;
+		Compiler compiler(stream, parser);
+		compiler.compile();
 
-	print("Compiler finished\n");
+		print("Compiler finished\n");
 
-	if (!output_file.empty()) {
-		std::ofstream file(output_file);
-		file << 
-			"section .text\n"
-			"global _start\n"
-			"\n"
-			"_start:\n"
-			"	call main\n"
-			"	mov ebx, eax\n"
-			"	mov al, 1\n"
-			"	int 0x80\n"
-			"\n"
-			"; -- generated asm --\n\n";
-		file << stream.str();
-	} else if (show_asm) {
-		print("{}\n", stream.str());
+		if (!output_file.empty()) {
+			std::ofstream file(output_file);
+			file << 
+				"section .text\n"
+				"global _start\n"
+				"\n"
+				"_start:\n"
+				"	call main\n"
+				"	mov ebx, eax\n"
+				"	mov al, 1\n"
+				"	int 0x80\n"
+				"\n"
+				"; -- generated asm --\n\n";
+			file << stream.str();
+		} else if (show_asm) {
+			print("{}\n", stream.str());
+		}
 	}
 
 	return 0;

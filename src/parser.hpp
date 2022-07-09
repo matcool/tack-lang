@@ -57,8 +57,6 @@ enum class OperatorType {
 
 struct Expression {
 	ExpressionType type;
-	// TODO: have an specific value for this, instead of just void
-	Type prefer_type = Type { "void" };
 	std::vector<Expression> children;
 	// TODO: consider dynamic polymorphism instead of this
 	struct DeclarationData {
@@ -79,6 +77,9 @@ struct Expression {
 	};
 	std::variant<std::monostate, DeclarationData, VariableData, LiteralData, OperatorData, CallData> data;
 	Span span;
+	// TODO: better name, and maybe a better default
+	// exp_type, result_type, IDK
+	Type value_type { "void" };
 
 	Expression(const ExpressionType type) : type(type) {}
 	template <class T>

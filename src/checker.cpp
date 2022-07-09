@@ -58,9 +58,9 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 		const auto& data = std::get<Expression::LiteralData>(expression.data);
 		// TODO: use infer type
 		if (std::holds_alternative<bool>(data.value))
-			return Type { .name = "bool" };
+			return expression.value_type = Type { .name = "bool" };
 		else if (std::holds_alternative<int>(data.value))
-			return Type { .name = "i32" };
+			return expression.value_type = Type { .name = "i32" };
 		else
 			error_at_exp(expression, "TODO: strings");
 	} else if (expression.type == ExpressionType::Operator) {
@@ -70,7 +70,7 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 			const auto rhs_type = check_expression(expression.children[1], parent);
 			if (!lhs_type.unref_eq(rhs_type))
 				error_at_exp(expression, format("Types didnt match {} {}", lhs_type, rhs_type));
-			return lhs_type.remove_reference();
+			return expression.value_type = lhs_type.remove_reference();
 		} else if (data.op_type == OperatorType::Equals) {
 			const auto lhs_type = check_expression(expression.children[0], parent);
 			const auto rhs_type = check_expression(expression.children[1], parent);
