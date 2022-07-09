@@ -75,12 +75,10 @@ void Compiler::generate_return(const Function& function) {
 void Compiler::compile_expression(Expression& exp, bool by_reference) {
 	if (exp.type == ExpressionType::Literal) {
 		const auto& data = std::get<Expression::LiteralData>(exp.data);
-		std::visit([&] <typename T> (const T& value){
-			if constexpr (std::is_same_v<T, int>)
-				write("mov eax, {}", value);
-			else if constexpr (std::is_same_v<T, bool>)
-				write("mov al, {}", int(value));
-			else if constexpr (std::is_same_v<T, std::string>) {
+		std::visit(overloaded {
+			[&](int value) { write("mov eax, {}", value); },
+			[&](bool value) { write("mov al, {}", int(value)); },
+			[&](const std::string& value) {
 				write("mov eax, data_{}", m_data_counter++);
 				m_strings.push_back(value);
 			}
