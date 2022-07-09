@@ -1,0 +1,98 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Tack",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#constants"
+		},
+		{
+			"include": "#identifiers"
+		},
+		{
+			"include": "#operators"
+		},
+		{
+			"include": "#comments"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.tack",
+					"match": "\\b(if|return)\\b"
+				},
+				{
+					"name": "storage.type.tack",
+					"match": "\\b(let)\\b"
+				},
+				{
+					"name": "keyword.other.tack",
+					"match": "\\b(fn|let)\\b"
+				}
+			]
+		},
+		"constants": {
+			"patterns": [
+				{
+					"name": "constant.language.bool.tack",
+					"match": "\\b(true|false)\\b"
+				},
+				{
+					"name": "constant.numeric.tack",
+					"match": "\\b(\\d+)\\b"
+				}
+			]
+		},
+		"identifiers": {
+			"patterns": [
+				{
+					"name": "entity.name.type.tack",
+					"match": "\\b(i32|bool)\\b"
+				},
+				{
+					"name": "entity.name.function.tack",
+					"match": "\\b([a-zA-Z_\\-]\\w*)\\("
+				},
+				{
+					"name": "variable.other.tack",
+					"match": "\\b([a-zA-Z_\\-]\\w*)\\b"
+				}
+			]
+		},
+		"operators": {
+			"patterns": [
+				{
+					"name": "keyword.operator.tack",
+					"match": "(=)"
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.tack",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.tack",
+					"match": "\\\\."
+				}
+			]
+		},
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.double-slash.tack",
+					"match": "(\/\/.*)$"
+				}
+			]
+		}
+	},
+	"scopeName": "source.tack"
+}
