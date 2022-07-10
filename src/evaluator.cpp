@@ -30,14 +30,6 @@ Evaluator::Value Evaluator::eval_function(Function& function, std::vector<Value>
 }
 
 Evaluator::Value Evaluator::eval_expression(Expression& expression, Function& parent, Scope& scope) {
-	// returns referenced value if its a ref, otherwise return the value
-	const auto get_value_or_ref = [](Value& value) -> Value& {
-		if (value.type.reference) {
-			return std::get<std::reference_wrapper<Value>>(value.data);
-		} else {
-			return value;
-		}
-	};
 	return expression.match(
 		[&](const Expression::LiteralData& data) {
 			return Value { expression.value_type, std::get<int>(data.value) };
@@ -46,14 +38,10 @@ Evaluator::Value Evaluator::eval_expression(Expression& expression, Function& pa
 			// TODO: OperatorKind or smth, at least have some way to separate into binary and unary
 			auto lhs = eval_expression(expression.children[0], parent, scope);
 			auto rhs = eval_expression(expression.children[1], parent, scope);
-			// TODO: maybe do it like compiler, bool by_reference
-			// or use type checker for it
-			auto& a = get_value_or_ref(lhs);
-			auto& b = get_value_or_ref(rhs);
 			if (data.op_type == OperatorType::Addition) {
 				if (expression.value_type.name == "i32") {
 					return Value {
-						expression.value_type, std::get<int>(a.data) + std::get<int>(b.data)
+						expression.value_type, std::get<int>(lhs.data) + std::get<int>(rhs.data)
 					};
 				}
 			}
