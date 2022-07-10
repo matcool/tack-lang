@@ -149,10 +149,7 @@ void Compiler::compile_expression(Expression& exp, bool by_reference) {
 			else if (off < 0) return format("- {}", -off);
 			else return format("+ {}", off);
 		};
-		if (by_reference)
-			write("lea eax, [ebp {}]", format_offset(-m_variables[data.name] * 4));
-		else
-			write("mov eax, [ebp {}]", format_offset(-m_variables[data.name] * 4));
+		write("lea eax, [ebp {}]", format_offset(-m_variables[data.name] * 4));
 	} else if (exp.type == ExpressionType::Call) {
 		for (auto& child : exp.children) {
 			compile_expression(child);
@@ -177,6 +174,9 @@ void Compiler::compile_expression(Expression& exp, bool by_reference) {
 				break;
 			}
 		}
+	} else if (exp.type == ExpressionType::Cast) {
+		compile_expression(exp.children[0]);
+		write("mov eax, [eax]");
 	} else {
 		print("{}\n", exp.type);
 		assert(false, "unimplemented");
