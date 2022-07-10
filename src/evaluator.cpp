@@ -21,18 +21,36 @@ Evaluator::Value Evaluator::eval_function(Function& function, std::vector<Value>
 	}
 	args.clear();
 	for (auto& stmt : function.statements) {
-		if (stmt.type == StatementType::Return) {
-			return eval_expression(stmt.expressions[0], function, scope);
-		} else if (stmt.type == StatementType::Expression) {
-			eval_expression(stmt.expressions[0], function, scope);
-		}
+		const auto result = eval_statement(stmt, function, scope);
+		if (result) return *result;
 	}
+}
+
+std::optional<Evaluator::Value> Evaluator::eval_statement(Statement& stmt, Function& parent, Scope& scope) {
+	if (stmt.type == StatementType::Return) {
+		return eval_expression(stmt.expressions[0], parent, scope);
+	} else if (stmt.type == StatementType::Expression) {
+		eval_expression(stmt.expressions[0], parent, scope);
+	} else if (stmt.type == StatementType::If) {
+		const auto value = eval_expression(stmt.expressions[0], parent, scope);
+		if (std::get<bool>(value.data)) {
+			for (auto& stmt : std::get<Statement::IfData>(stmt.data).children) {
+				const auto result = eval_statement(stmt, parent, scope);
+				if (result) return *result;
+			}
+		}
+	} else {
+		assert(false, format("Unhandled statement: {}", enum_name(stmt.type)));
+	}
+	return std::nullopt;
 }
 
 Evaluator::Value Evaluator::eval_expression(Expression& expression, Function& parent, Scope& scope) {
 	return expression.match(
 		[&](const Expression::LiteralData& data) {
-			return Value { expression.value_type, std::get<int>(data.value) };
+			return std::visit([&](auto value) {
+				return Value { expression.value_type, value };
+			}, data.value);
 		},
 		[&](const Expression::OperatorData& data) {
 			// TODO: OperatorKind or smth, at least have some way to separate into binary and unary
@@ -44,9 +62,20 @@ Evaluator::Value Evaluator::eval_expression(Expression& expression, Function& pa
 						expression.value_type, std::get<int>(lhs.data) + std::get<int>(rhs.data)
 					};
 				}
+			} else if (data.op_type == OperatorType::Equals) {
+				return Value {
+					expression.value_type,
+					std::visit([&](const auto& a, const auto& b) {
+						if constexpr (requires { a == b; }) {
+							return a == b;
+						} else {
+							assert(false, "Unhandled comparison");
+							return false;
+						}
+					}, lhs.data, rhs.data)
+				};
 			}
-			print("{}\n", enum_name(data.op_type));
-			assert(false, "unhandled operator");
+			assert(false, format("Unhandled operator {}", enum_name(data.op_type)));
 			std::abort();
 		},
 		[&](const Expression::DeclarationData& data) {

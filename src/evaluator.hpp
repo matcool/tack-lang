@@ -7,7 +7,7 @@ class Evaluator {
 
 	struct Value {
 		Type type;
-		std::variant<std::monostate, int, bool, std::reference_wrapper<Value>> data;
+		std::variant<std::monostate, int, bool, std::string, std::reference_wrapper<Value>> data;
 	};
 	struct Scope {
 		std::vector<std::pair<std::string, Value>> variables;
@@ -27,6 +27,7 @@ class Evaluator {
 		}
 	};
 	Value eval_function(Function& function, std::vector<Value> args);
+	std::optional<Value> eval_statement(Statement&, Function& parent, Scope& scope);
 	Value eval_expression(Expression&, Function& parent, Scope& scope);
 public:
 	Evaluator(Parser& parser) : m_parser(parser) {}
