@@ -26,7 +26,7 @@ class Evaluator {
 			return variables.back().second;
 		}
 	};
-	Value eval_function(Function& function);
+	Value eval_function(Function& function, std::vector<Value> args);
 	Value eval_expression(Expression&, Function& parent, Scope& scope);
 public:
 	Evaluator(Parser& parser) : m_parser(parser) {}

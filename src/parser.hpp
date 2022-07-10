@@ -188,4 +188,11 @@ public:
 	}
 
 	void parse();
+
+	Function& function_by_name(const std::string& name) {
+		for (auto& function : m_functions) {
+			if (function.name == name) return function;
+		}
+		std::abort();
+	}
 };

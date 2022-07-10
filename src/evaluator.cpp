@@ -4,7 +4,7 @@
 int Evaluator::run() {
 	for (auto& function : m_parser.m_functions) {
 		if (function.name == "main") {
-			const auto value = eval_function(function);
+			const auto value = eval_function(function, {});
 			return std::get<int>(value.data);
 		}
 	}
@@ -12,8 +12,13 @@ int Evaluator::run() {
 	return -1;
 }
 
-Evaluator::Value Evaluator::eval_function(Function& function) {
+Evaluator::Value Evaluator::eval_function(Function& function, std::vector<Value> args) {
 	Scope scope;
+	assert(function.arguments.size() == args.size(), "function args mismatch");
+	for (size_t i = 0; i < args.size(); ++i) {
+		scope.add_variable(function.arguments[i].name, std::move(args[i]));
+	}
+	args.clear();
 	for (auto& stmt : function.statements) {
 		if (stmt.type == StatementType::Return) {
 			return eval_expression(stmt.expressions[0], function, scope);
@@ -36,6 +41,25 @@ Evaluator::Value Evaluator::eval_expression(Expression& expression, Function& pa
 		[&](const Expression::LiteralData& data) {
 			return Value { expression.value_type, std::get<int>(data.value) };
 		},
+		[&](const Expression::OperatorData& data) {
+			// TODO: OperatorKind or smth, at least have some way to separate into binary and unary
+			auto lhs = eval_expression(expression.children[0], parent, scope);
+			auto rhs = eval_expression(expression.children[1], parent, scope);
+			// TODO: maybe do it like compiler, bool by_reference
+			// or use type checker for it
+			auto& a = get_value_or_ref(lhs);
+			auto& b = get_value_or_ref(rhs);
+			if (data.op_type == OperatorType::Addition) {
+				if (expression.value_type.name == "i32") {
+					return Value {
+						expression.value_type, std::get<int>(a.data) + std::get<int>(b.data)
+					};
+				}
+			}
+			print("{}\n", enum_name(data.op_type));
+			assert(false, "unhandled operator");
+			std::abort();
+		},
 		[&](const Expression::DeclarationData& data) {
 			Value& value = scope.add_variable(data.var.name, Value { data.var.type });
 			return Value { data.var.type.add_reference(), std::ref(value) };
@@ -54,6 +78,14 @@ Evaluator::Value Evaluator::eval_expression(Expression& expression, Function& pa
 			Value& value = std::get<std::reference_wrapper<Value>>(lhs.data);
 			value.data = rhs.data;
 			return lhs;
+		},
+		[&](const Expression::CallData& data) {
+			std::vector<Value> values;
+			for (auto& child : expression.children) {
+				values.emplace_back(eval_expression(child, parent, scope));
+			}
+			auto& function = m_parser.function_by_name(data.function_name);
+			return eval_function(function, values);
 		},
 		[&](auto) {
 			print("{}\n", enum_name(expression.type));
