@@ -69,9 +69,14 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 			error_at_exp(expression, "TODO: strings");
 	} else if (expression.type == ExpressionType::Operator) {
 		const auto& data = std::get<Expression::OperatorData>(expression.data);
-		if (data.op_type == OperatorType::Addition || data.op_type == OperatorType::Subtraction || data.op_type == OperatorType::Multiplication || data.op_type == OperatorType::Division) {
+		if (data.op_type == OperatorType::Addition || data.op_type == OperatorType::Subtraction 
+		 || data.op_type == OperatorType::Multiplication || data.op_type == OperatorType::Division
+		 || data.op_type == OperatorType::Equals) {
 			const auto lhs_type = check_expression(expression.children[0], parent);
 			const auto rhs_type = check_expression(expression.children[1], parent);
+
+			if (!lhs_type.unref_eq(rhs_type))
+				error_at_exp(expression, format("Types didnt match {} {}", lhs_type, rhs_type));
 
 			if (lhs_type.reference)
 				replace_with_cast(expression.children[0], lhs_type.remove_reference());
@@ -79,15 +84,11 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 			if (rhs_type.reference)
 				replace_with_cast(expression.children[1], rhs_type.remove_reference());
 			
-			if (!lhs_type.unref_eq(rhs_type))
-				error_at_exp(expression, format("Types didnt match {} {}", lhs_type, rhs_type));
-			return expression.value_type = lhs_type.remove_reference();
-		} else if (data.op_type == OperatorType::Equals) {
-			const auto lhs_type = check_expression(expression.children[0], parent);
-			const auto rhs_type = check_expression(expression.children[1], parent);
-			if (!lhs_type.unref_eq(rhs_type))
-				error_at_exp(expression, format("Types didnt match {} {}", lhs_type, rhs_type));
-			return expression.value_type = Type { "bool" };
+			if (data.op_type == OperatorType::Equals) {
+				return expression.value_type = Type { "bool" };
+			} else {
+				return expression.value_type = lhs_type.remove_reference();
+			}
 		} else {
 			error_at_exp(expression, "Unhandled operator oops");
 		}

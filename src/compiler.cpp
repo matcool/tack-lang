@@ -176,7 +176,11 @@ void Compiler::compile_expression(Expression& exp, bool by_reference) {
 		}
 	} else if (exp.type == ExpressionType::Cast) {
 		compile_expression(exp.children[0]);
-		write("mov eax, [eax]");
+		if (!exp.value_type.reference && exp.children[0].value_type.reference) {
+			write("mov eax, [eax]");
+		} else {
+			assert(false, format("unhandled cast between {} and {}", exp.value_type, exp.children[0].value_type));
+		}
 	} else {
 		print("{}\n", exp.type);
 		assert(false, "unimplemented");
