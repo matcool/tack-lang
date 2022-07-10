@@ -5,6 +5,7 @@ int Evaluator::run() {
 	for (auto& function : m_parser.m_functions) {
 		if (function.name == "main") {
 			const auto value = eval_function(function, {});
+			assert(std::holds_alternative<int>(value.data), format("oh cmon {}", value.data.index()));
 			return std::get<int>(value.data);
 		}
 	}
@@ -87,9 +88,18 @@ Evaluator::Value Evaluator::eval_expression(Expression& expression, Function& pa
 			auto& function = m_parser.function_by_name(data.function_name);
 			return eval_function(function, values);
 		},
+		[&](MatchValue<ExpressionType::Cast>) {
+			auto value = eval_expression(expression.children[0], parent, scope);
+			const auto& child_type = expression.children[0].value_type;
+			if (!expression.value_type.unref_eq(child_type)) {
+				assert(false, format("dont know how to convert {} to {}", child_type, expression.value_type));
+			}
+			if (child_type.reference && !expression.value_type.reference) {
+				return std::get<std::reference_wrapper<Value>>(value.data).get();
+			}
+		},
 		[&](auto) {
-			print("{}\n", enum_name(expression.type));
-			assert(false, "unhandled expression");
+			assert(false, format("unhandled expression: {}", enum_name(expression.type)));
 			return Value{};
 		}
 	);

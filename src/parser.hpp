@@ -27,6 +27,12 @@ struct Type {
 	}
 };
 
+inline auto& operator<<(std::ostream& stream, const Type& type) {
+	stream << type.name;
+	if (type.reference) stream << '&';
+	return stream;
+}
+
 struct Variable {
 	Type type;
 	std::string name;
@@ -39,6 +45,7 @@ enum class ExpressionType {
 	Assignment,
 	Operator,
 	Call,
+	Cast,
 };
 
 enum class OperatorType {
@@ -95,6 +102,8 @@ struct Expression {
 		if (std::holds_alternative<std::monostate>(data)) {
 			if (type == ExpressionType::Assignment) {
 				return ov(MatchValue<ExpressionType::Assignment>{});
+			} else if (type == ExpressionType::Cast) {
+				return ov(MatchValue<ExpressionType::Cast>{});
 			} else {
 				assert(false, "Missing data on Expression");
 				std::exit(1);

@@ -2,10 +2,6 @@
 #include "format.hpp"
 #include "enums.hpp"
 
-auto& operator<<(std::ostream& stream, const Type& type) {
-	return stream << "Type(" << type.name << ", ref=" << type.reference << ")";
-}
-
 TypeChecker::TypeChecker(Parser& parser) : m_parser(parser) {
 
 }
@@ -22,6 +18,14 @@ void TypeChecker::check_function(Function& function) {
 	}
 }
 
+void replace_with_cast(Expression& expression, const Type& type) {
+	Expression cast(ExpressionType::Cast);
+	cast.value_type = type;
+	cast.span = expression.span;
+	cast.children.push_back(std::move(expression));
+	expression = std::move(cast);
+}
+
 void TypeChecker::check_statement(Statement& stmt, Function& parent) {
 	if (stmt.type == StatementType::Return) {
 		if (parent.return_type.name == "void") {
@@ -31,12 +35,12 @@ void TypeChecker::check_statement(Statement& stmt, Function& parent) {
 		} else {
 			if (stmt.expressions.empty())
 				error_at_stmt(stmt, "Expected expression");
-			const auto type = check_expression(stmt.expressions.front(), parent, parent.return_type);
-			// TODO: wrap proper reference checking
-			// if ret type is ref then type must be ref
-			// else then if type is ref or not doesnt matter
-			if (parent.return_type.reference ? type != parent.return_type : !type.unref_eq(parent.return_type))
+			const auto type = check_expression(stmt.expressions[0], parent, parent.return_type);
+			if (!type.unref_eq(parent.return_type))
 				error_at_stmt(stmt, format("Type mismatch, expected {} got {}", parent.return_type, type));
+
+			if (type.reference && !parent.return_type.reference)
+				replace_with_cast(stmt.expressions[0], parent.return_type);
 		}
 	} else if (stmt.type == StatementType::Expression) {
 		check_expression(stmt.expressions[0], parent);
@@ -68,6 +72,13 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 		if (data.op_type == OperatorType::Addition || data.op_type == OperatorType::Subtraction || data.op_type == OperatorType::Multiplication || data.op_type == OperatorType::Division) {
 			const auto lhs_type = check_expression(expression.children[0], parent);
 			const auto rhs_type = check_expression(expression.children[1], parent);
+
+			if (lhs_type.reference)
+				replace_with_cast(expression.children[0], lhs_type.remove_reference());
+
+			if (rhs_type.reference)
+				replace_with_cast(expression.children[1], rhs_type.remove_reference());
+			
 			if (!lhs_type.unref_eq(rhs_type))
 				error_at_exp(expression, format("Types didnt match {} {}", lhs_type, rhs_type));
 			return expression.value_type = lhs_type.remove_reference();
@@ -76,7 +87,7 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 			const auto rhs_type = check_expression(expression.children[1], parent);
 			if (!lhs_type.unref_eq(rhs_type))
 				error_at_exp(expression, format("Types didnt match {} {}", lhs_type, rhs_type));
-			return Type { "bool" };
+			return expression.value_type = Type { "bool" };
 		} else {
 			error_at_exp(expression, "Unhandled operator oops");
 		}
@@ -111,24 +122,27 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 			const auto it = std::find_if(vars.begin(), vars.end(), [&](const auto& var) { return var.name == data.name; });
 			if (it == vars.end())
 				error_at_exp(expression, "Unknown variable");
-			return it->type.add_reference();
+			return expression.value_type = it->type.add_reference();
 		} else {
-			return it->type.add_reference();
+			return expression.value_type = it->type.add_reference();
 		}
 	} else if (expression.type == ExpressionType::Declaration) {
 		const auto& data = std::get<Expression::DeclarationData>(expression.data);
 		parent.scope.variables.push_back(data.var);
-		return data.var.type.add_reference();
+		return expression.value_type = data.var.type.add_reference();
 	} else if (expression.type == ExpressionType::Assignment) {
 		const auto rhs_type = check_expression(expression.children[1], parent);
 		const auto lhs_type = check_expression(expression.children[0], parent, rhs_type);
 		if (!lhs_type.reference)
 			error_at_exp(expression.children[0], "Left hand side is not a reference");
 		
-		if (lhs_type.name != rhs_type.name)
+		if (!lhs_type.unref_eq(rhs_type))
 			error_at_exp(expression, "Both sides are not the same type");
-		
-		return lhs_type.remove_reference();
+
+		if (rhs_type.reference)
+			replace_with_cast(expression.children[1], rhs_type.remove_reference());
+
+		return expression.value_type = lhs_type;
 	} else {
 		error_at_exp(expression, format("what is this {}", expression.type));
 	}

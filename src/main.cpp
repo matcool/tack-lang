@@ -28,6 +28,9 @@ void print_expression(const Expression& exp, const int depth = 0) {
 	} else if (exp.type == ExpressionType::Call) {
 		print("({}) ", std::get<Expression::CallData>(exp.data).function_name);
 	}
+	if (exp.value_type.name != "void") {
+		print("-> {} ", exp.value_type);
+	}
 	print("\n");
 	for (auto& child : exp.children) {
 		print_expression(child, depth + 1);
@@ -111,6 +114,9 @@ int main(int argc, char** argv) {
 	parser.parse();
 	print("File parsed\n");
 
+	TypeChecker checker(parser);
+	checker.check();
+
 	if (show_ast) {
 		for (auto& function : parser.m_functions) {
 			print("Function {}: {}\n", function.name, function.return_type.name);
@@ -122,9 +128,6 @@ int main(int argc, char** argv) {
 			}
 		}
 	}
-
-	TypeChecker checker(parser);
-	checker.check();
 
 	if (evaluate) {
 		Evaluator evaluator(parser);

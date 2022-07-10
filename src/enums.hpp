@@ -39,6 +39,7 @@ inline const char* enum_name(const ExpressionType& t) {
 		case ExpressionType::Assignment: return "Assignment";
 		case ExpressionType::Operator: return "Operator";
 		case ExpressionType::Call: return "Call";
+		case ExpressionType::Cast: return "Cast";
 	}
 	return "";
 }
