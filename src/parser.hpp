@@ -62,6 +62,10 @@ enum class OperatorType {
 	NotEquals,
 };
 
+inline bool is_operator_binary(const OperatorType type) {
+	return !(type == OperatorType::Negation || type == OperatorType::Not || type == OperatorType::Bitflip);
+}
+
 template <auto enum_value>
 struct MatchValue {};
 
@@ -118,6 +122,7 @@ enum class StatementType {
 	Expression, // statement is just an expression
 	Return,     // statement returns an expression
 	If,
+	While,
 };
 
 struct Statement {
@@ -157,10 +162,9 @@ public:
 	Parser(const std::string_view& file_name, ArrayStream<Token> tokens);
 
 	Variable parse_var_decl();
-	void parse_function(Function& function);
 	Statement parse_statement();
 
-	std::vector<Statement> parse_block();
+	void parse_block(std::vector<Statement>&);
 
 	Type parse_type();
 

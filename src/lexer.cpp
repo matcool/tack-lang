@@ -80,11 +80,18 @@ std::optional<Token> Lexer::get_token() {
 			}
 			case '-': return ret(Token(TokenType::Operator, "-"));
 			case '~': return ret(Token(TokenType::Operator, "~"));
-			case '!': return ret(Token(TokenType::Operator, "!"));
 			case '+': return ret(Token(TokenType::Operator, "+"));
 			case '*': return ret(Token(TokenType::Operator, "*"));
+			case '!': {
+				if (m_stream.peek() == '=') {
+					m_stream.get();
+					return ret(Token(TokenType::Operator, "!="));
+				} else {
+					return ret(Token(TokenType::Operator, "!"));
+				}
+			}
 			case '/': {
-				if (static_cast<char>(m_stream.peek()) == '/') {
+				if (m_stream.peek() == '/') {
 					std::string comment;
 					eat_until(comment, '\n');
 					return {};
@@ -105,7 +112,7 @@ std::optional<Token> Lexer::get_token() {
 						break;
 				}
 				// TODO: clean this up
-				if (str == "fn" || str == "let" || str == "return" || str == "true" || str == "false" || str == "if")
+				if (str == "fn" || str == "let" || str == "return" || str == "true" || str == "false" || str == "if" || str == "while")
 					return ret(Token(TokenType::Keyword, str));
 				else
 					return ret(Token(TokenType::Identifier, str));

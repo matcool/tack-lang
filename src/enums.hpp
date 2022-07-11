@@ -27,6 +27,7 @@ inline const char* enum_name(const StatementType& t) {
 		case StatementType::Expression: return "Expression";
 		case StatementType::Return: return "Return";
 		case StatementType::If: return "If";
+		case StatementType::While: return "While";
 	}
 	return "";
 }

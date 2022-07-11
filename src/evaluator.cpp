@@ -39,6 +39,15 @@ std::optional<Evaluator::Value> Evaluator::eval_statement(Statement& stmt, Funct
 				if (result) return *result;
 			}
 		}
+	} else if (stmt.type == StatementType::While) {
+		while (true) {
+			const auto value = eval_expression(stmt.expressions[0], parent, scope);
+			if (!std::get<bool>(value.data)) break;
+			for (auto& stmt : std::get<Statement::IfData>(stmt.data).children) {
+				const auto result = eval_statement(stmt, parent, scope);
+				if (result) return *result;
+			}
+		}
 	} else {
 		assert(false, format("Unhandled statement: {}", enum_name(stmt.type)));
 	}
@@ -68,6 +77,18 @@ Evaluator::Value Evaluator::eval_expression(Expression& expression, Function& pa
 					std::visit([&](const auto& a, const auto& b) {
 						if constexpr (requires { a == b; }) {
 							return a == b;
+						} else {
+							assert(false, "Unhandled comparison");
+							return false;
+						}
+					}, lhs.data, rhs.data)
+				};
+			} else if (data.op_type == OperatorType::NotEquals) {
+				return Value {
+					expression.value_type,
+					std::visit([&](const auto& a, const auto& b) {
+						if constexpr (requires { a != b; }) {
+							return a != b;
 						} else {
 							assert(false, "Unhandled comparison");
 							return false;

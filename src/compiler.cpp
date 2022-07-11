@@ -55,6 +55,17 @@ void Compiler::compile_statement(Statement& statement) {
 		for (auto& child : std::get<Statement::IfData>(statement.data).children)
 			compile_statement(child);
 		write("{}:", label);
+	} else if (statement.type == StatementType::While) {
+		const auto label_start = format("{}_while_start_{}", m_cur_function->name, m_label_counter++);
+		const auto label_end = format("{}_while_end_{}", m_cur_function->name, m_label_counter++);
+		write("{}:", label_start);
+		compile_expression(statement.expressions[0]);
+		write("cmp al, 1");
+		write("jne {}", label_end);
+		for (auto& child : std::get<Statement::IfData>(statement.data).children)
+			compile_statement(child);
+		write("jmp {}", label_start);
+		write("{}:", label_end);
 	} else {
 		assert(false, "unimplemented");
 	}
@@ -122,6 +133,13 @@ void Compiler::compile_expression(Expression& exp, bool by_reference) {
 			write("pop ecx");
 			write("cmp eax, ecx");
 			write("sete al");
+		} else if (data.op_type == OperatorType::NotEquals) {
+			compile_expression(exp.children[0]);
+			write("push eax");
+			compile_expression(exp.children[1]);
+			write("pop ecx");
+			write("cmp eax, ecx");
+			write("setne al");
 		} else {
 			assert(false, "unimplemented");
 		}

@@ -44,7 +44,7 @@ void TypeChecker::check_statement(Statement& stmt, Function& parent) {
 		}
 	} else if (stmt.type == StatementType::Expression) {
 		check_expression(stmt.expressions[0], parent);
-	} else if (stmt.type == StatementType::If) {
+	} else if (stmt.type == StatementType::If || stmt.type == StatementType::While) {
 		auto& data = std::get<Statement::IfData>(stmt.data);
 		const auto type = check_expression(stmt.expressions[0], parent, Type { "bool" });
 		if (type != Type { "bool" })
@@ -69,9 +69,7 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 			error_at_exp(expression, "TODO: strings");
 	} else if (expression.type == ExpressionType::Operator) {
 		const auto& data = std::get<Expression::OperatorData>(expression.data);
-		if (data.op_type == OperatorType::Addition || data.op_type == OperatorType::Subtraction 
-		 || data.op_type == OperatorType::Multiplication || data.op_type == OperatorType::Division
-		 || data.op_type == OperatorType::Equals) {
+		if (is_operator_binary(data.op_type)) {
 			const auto lhs_type = check_expression(expression.children[0], parent);
 			const auto rhs_type = check_expression(expression.children[1], parent);
 
@@ -84,7 +82,7 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 			if (rhs_type.reference)
 				replace_with_cast(expression.children[1], rhs_type.remove_reference());
 			
-			if (data.op_type == OperatorType::Equals) {
+			if (data.op_type == OperatorType::Equals || data.op_type == OperatorType::NotEquals) {
 				return expression.value_type = Type { "bool" };
 			} else {
 				return expression.value_type = lhs_type.remove_reference();
