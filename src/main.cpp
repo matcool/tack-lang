@@ -37,6 +37,18 @@ void print_expression(const Expression& exp, const int depth = 0) {
 	}
 }
 
+void print_statement(const Statement& statement, const int depth = 0) {
+	for (int i = 0; i < depth; ++i)
+		print("  ");
+	print("{}\n", enum_name(statement.type));
+	for (auto& expression : statement.expressions) {
+		print_expression(expression, depth + 1);
+	}
+	for (auto& child : statement.children) {
+		print_statement(child, depth + 1);
+	}
+}
+
 auto& operator<<(std::ostream& stream, const Token& token) {
 	stream << token.span.line << ':' << token.span.column << ' ';
 	stream << enum_name(token.type);
@@ -121,10 +133,7 @@ int main(int argc, char** argv) {
 		for (auto& function : parser.m_functions) {
 			print("Function {}: {}\n", function.name, function.return_type.name);
 			for (auto& statement : function.statements) {
-				print("  {}\n", enum_name(statement.type));
-				for (auto& expression : statement.expressions) {
-					print_expression(expression, 2);
-				}
+				print_statement(statement, 1);
 			}
 		}
 	}
