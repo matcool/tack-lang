@@ -6,7 +6,7 @@ Parser::Parser(const std::string_view& file_name, ArrayStream<Token> tokens)
 	: m_file_name(file_name),
 	m_tokens(tokens) {}
 
-void Parser::error_at_token(const Token& token, const std::string_view& msg) {
+void Parser::error_at_token(const Token& token, const std::string_view& msg) const {
 	print("[error] {}", msg);
 	if (!m_file_name.empty())
 		print_file_span(m_file_name, token.span);
@@ -14,7 +14,7 @@ void Parser::error_at_token(const Token& token, const std::string_view& msg) {
 	std::exit(1);
 }
 
-Token& Parser::expect_token_type(Token& token, TokenType type, const std::string_view& msg) {
+Token& Parser::expect_token_type(Token& token, TokenType type, const std::string_view& msg) const {
 	if (token.type != type)
 		error_at_token(token, msg);
 	return token;
@@ -85,7 +85,7 @@ Statement Parser::parse_statement() {
 	auto& first = m_tokens.peek();
 	if (first.type == TokenType::Keyword && first.data == "return") {
 		m_tokens.get();
-		assert(m_cur_function, "Return statement cannot appear outside function");
+		assert(m_cur_function != nullptr, "Return statement cannot appear outside function");
 		Statement stmt { StatementType::Return };
 		stmt.span = first.span;
 		if (m_tokens.peek().type != TokenType::Semicolon)
@@ -152,7 +152,7 @@ Expression Parser::parse_exp_primary() {
 			return exp;
 		}
 	} else if (token.type == TokenType::LeftParen) {
-		const auto exp = parse_expression();
+		auto exp = parse_expression();
 		expect_token_type(m_tokens.get(), TokenType::RightParen, "Expected )");
 		return exp;
 	} else if (token.type == TokenType::Operator) {

@@ -22,10 +22,10 @@ void Compiler::compile_function(Function& function) {
 	for (size_t i = 0; i < function.arguments.size(); ++i) {
 		m_variables[function.arguments[i].name] = -(function.arguments.size() - i - 1 + 2);
 	}
-	if (function.scope.variables.size() || function.arguments.size()) {
+	if (!function.scope.variables.empty() || !function.arguments.empty()) {
 		write("push ebp");
 		write("mov ebp, esp");
-		if (function.scope.variables.size())
+		if (!function.scope.variables.empty())
 			write("sub esp, {}", function.scope.variables.size() * 4);
 	}
 	for (auto& statement : function.statements) {
@@ -43,7 +43,7 @@ void Compiler::compile_statement(Statement& statement) {
 			compile_expression(statement.expressions[0]);
 		}
 		// shouldnt ever be null
-		if (m_cur_function)
+		if (m_cur_function != nullptr)
 			generate_return(*m_cur_function);
 	} else if (statement.type == StatementType::Expression) {
 		compile_expression(statement.expressions[0]);
@@ -72,18 +72,18 @@ void Compiler::compile_statement(Statement& statement) {
 }
 
 void Compiler::generate_return(const Function& function) {
-	if (function.scope.variables.size()) {
+	if (!function.scope.variables.empty()) {
 		write("add esp, {}", function.scope.variables.size() * 4);
 	}
 		
-	if (function.scope.variables.size() || function.arguments.size()) {
+	if (!function.scope.variables.empty() || !function.arguments.empty()) {
 		write("mov esp, ebp");
 		write("pop ebp");
 	}
 	write("ret");
 }
 
-void Compiler::compile_expression(Expression& exp, bool by_reference) {
+void Compiler::compile_expression(Expression& exp, bool /*by_reference*/) {
 	if (exp.type == ExpressionType::Literal) {
 		const auto& data = std::get<Expression::LiteralData>(exp.data);
 		std::visit(overloaded {

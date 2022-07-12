@@ -22,7 +22,7 @@ public:
 		m_stream << '\n';
 	}
 
-	void compile_expression(Expression&, bool ref = false);
+	void compile_expression(Expression&, bool by_reference = false);
 	void compile_statement(Statement&);
 	void compile_function(Function&);
 

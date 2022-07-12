@@ -1,0 +1,22 @@
+---
+# from cpp best practices
+Checks: "*,
+	-abseil-*,
+	-altera-*,
+	-android-*,
+	-fuchsia-*,
+	-google-*,
+	-llvm*,
+	-modernize-use-trailing-return-type,
+	-misc-no-recursion,
+	-zircon-*,
+	-readability-else-after-return,
+	-readability-static-accessed-through-instance,
+	-readability-avoid-const-params-in-decls,
+	-cppcoreguidelines-non-private-member-variables-in-classes,
+	-misc-non-private-member-variables-in-classes,
+	-readability-function-cognitive-complexity,
+	-readability-braces-around-statements,
+	-hicpp-braces-around-statements
+"
+UseColor: true

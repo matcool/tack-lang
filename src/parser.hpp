@@ -169,8 +169,8 @@ public:
 	Expression parse_exp_inner(int prio);
 	Expression parse_exp_primary();
 
-	void error_at_token(const Token& token, const std::string_view& msg);
-	Token& expect_token_type(Token& token, TokenType type, const std::string_view& msg);
+	void error_at_token(const Token& token, const std::string_view& msg) const;
+	Token& expect_token_type(Token& token, TokenType type, const std::string_view& msg) const;
 	
 	// Parses comma list enclosed by parenthesis (todo: customizable)
 	// callable is expected to eat the tokens for each thing in the list

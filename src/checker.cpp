@@ -56,7 +56,7 @@ void TypeChecker::check_statement(Statement& stmt, Function& parent) {
 	}
 }
 
-Type TypeChecker::check_expression(Expression& expression, Function& parent, const std::optional<Type> infer_type) {
+Type TypeChecker::check_expression(Expression& expression, Function& parent, const std::optional<Type>& /*infer_type*/) {
 	if (expression.type == ExpressionType::Literal) {
 		const auto& data = std::get<Expression::LiteralData>(expression.data);
 		// TODO: use infer type
@@ -146,7 +146,7 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 	}
 }
 
-void TypeChecker::error_at(const Span& span, const std::string_view& msg) {
+void TypeChecker::error_at(const Span& span, const std::string_view& msg) const {
 	print("[error] {}", msg);
 	if (!m_parser.m_file_name.empty())
 		print_file_span(m_parser.m_file_name, span);
@@ -154,10 +154,10 @@ void TypeChecker::error_at(const Span& span, const std::string_view& msg) {
 	std::exit(1);
 }
 
-void TypeChecker::error_at_exp(const Expression& exp, const std::string_view& msg) {
+void TypeChecker::error_at_exp(const Expression& exp, const std::string_view& msg) const {
 	error_at(exp.span, msg);
 }
 
-void TypeChecker::error_at_stmt(const Statement& stmt, const std::string_view& msg) {
+void TypeChecker::error_at_stmt(const Statement& stmt, const std::string_view& msg) const {
 	error_at(stmt.span, msg);
 }

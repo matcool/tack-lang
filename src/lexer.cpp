@@ -8,7 +8,7 @@ bool is_whitespace(char c) {
 
 void Lexer::eat_until(std::string& buffer, char target) {
 	while (m_stream.good()) {
-		char c;
+		char c = 0;
 		m_stream.get(c);
 		next_char(c);
 		if (c == target) return;
@@ -17,7 +17,7 @@ void Lexer::eat_until(std::string& buffer, char target) {
 }
 
 std::optional<Token> Lexer::get_token() {
-	char c;
+	char c = 0;
 	while (m_stream.good()) {
 		m_stream.get(c);
 		if (m_stream.eof()) return {};

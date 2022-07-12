@@ -32,19 +32,20 @@ void print_expression(const Expression& exp, const int depth = 0) {
 		print("-> {} ", exp.value_type);
 	}
 	print("\n");
-	for (auto& child : exp.children) {
+	for (const auto& child : exp.children) {
 		print_expression(child, depth + 1);
 	}
 }
 
 void print_statement(const Statement& statement, const int depth = 0) {
-	for (int i = 0; i < depth; ++i)
+	for (int i = 0; i < depth; ++i) {
 		print("  ");
+	}
 	print("{}\n", enum_name(statement.type));
-	for (auto& expression : statement.expressions) {
+	for (const auto& expression : statement.expressions) {
 		print_expression(expression, depth + 1);
 	}
-	for (auto& child : statement.children) {
+	for (const auto& child : statement.children) {
 		print_statement(child, depth + 1);
 	}
 }
@@ -52,7 +53,9 @@ void print_statement(const Statement& statement, const int depth = 0) {
 auto& operator<<(std::ostream& stream, const Token& token) {
 	stream << token.span.line << ':' << token.span.column << ' ';
 	stream << enum_name(token.type);
-	if (!token.data.empty()) stream << " \"" << token.data << '"';
+	if (!token.data.empty()) {
+		stream << " \"" << token.data << '"';
+	}
 	return stream;
 }
 
