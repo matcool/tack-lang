@@ -96,18 +96,14 @@ Statement Parser::parse_statement() {
 		Statement stmt { StatementType::If };
 		stmt.span = first.span;
 		stmt.expressions.push_back(parse_expression());
-		Statement::IfData data;
-		parse_block(data.children);
-		stmt.data = data;
+		parse_block(stmt.children);
 		return stmt;
 	} else if (first.type == TokenType::Keyword && first.data == "while") {
 		m_tokens.get();
 		Statement stmt { StatementType::While };
 		stmt.span = first.span;
 		stmt.expressions.push_back(parse_expression());
-		Statement::IfData data;
-		parse_block(data.children);
-		stmt.data = data;
+		parse_block(stmt.children);
 		return stmt;
 	} else {
 		const auto exp = parse_expression();

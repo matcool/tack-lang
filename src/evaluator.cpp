@@ -34,7 +34,7 @@ std::optional<Evaluator::Value> Evaluator::eval_statement(Statement& stmt, Funct
 	} else if (stmt.type == StatementType::If) {
 		const auto value = eval_expression(stmt.expressions[0], parent, scope);
 		if (std::get<bool>(value.data)) {
-			for (auto& stmt : std::get<Statement::IfData>(stmt.data).children) {
+			for (auto& stmt : stmt.children) {
 				const auto result = eval_statement(stmt, parent, scope);
 				if (result) return *result;
 			}
@@ -43,7 +43,7 @@ std::optional<Evaluator::Value> Evaluator::eval_statement(Statement& stmt, Funct
 		while (true) {
 			const auto value = eval_expression(stmt.expressions[0], parent, scope);
 			if (!std::get<bool>(value.data)) break;
-			for (auto& stmt : std::get<Statement::IfData>(stmt.data).children) {
+			for (auto& stmt : stmt.children) {
 				const auto result = eval_statement(stmt, parent, scope);
 				if (result) return *result;
 			}

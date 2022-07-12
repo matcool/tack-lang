@@ -52,7 +52,7 @@ void Compiler::compile_statement(Statement& statement) {
 		const auto label = format("{}_if_end_{}", m_cur_function->name, m_label_counter++);
 		write("cmp al, 1");
 		write("jne {}", label);
-		for (auto& child : std::get<Statement::IfData>(statement.data).children)
+		for (auto& child : statement.children)
 			compile_statement(child);
 		write("{}:", label);
 	} else if (statement.type == StatementType::While) {
@@ -62,7 +62,7 @@ void Compiler::compile_statement(Statement& statement) {
 		compile_expression(statement.expressions[0]);
 		write("cmp al, 1");
 		write("jne {}", label_end);
-		for (auto& child : std::get<Statement::IfData>(statement.data).children)
+		for (auto& child : statement.children)
 			compile_statement(child);
 		write("jmp {}", label_start);
 		write("{}:", label_end);

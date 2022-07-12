@@ -129,11 +129,8 @@ struct Statement {
 	StatementType type;
 	std::vector<Expression> expressions;
 	Span span;
-	struct IfData {
-		// TODO: make this a scope, that is if they hold statements
-		std::vector<Statement> children;
-	};
-	std::variant<std::monostate, IfData> data;
+	// TODO: make this a scope, that is if they hold statements
+	std::vector<Statement> children;
 };
 
 struct Function;
