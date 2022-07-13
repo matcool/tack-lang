@@ -10,7 +10,7 @@ cd "$(dirname $0)"
 set -e
 
 echo "\e[32m- Running compiler\e[m"
-../tack $1/main.tack -o $1/main.asm
+../build/tack $1/main.tack -o $1/main.asm
 
 echo "\e[34m- Running nasm\e[m"
 nasm -f elf $1/main.asm

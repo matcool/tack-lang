@@ -22,7 +22,13 @@ inline constexpr void assert(bool value, const std::string_view msg, const Sourc
 		print("{}:{}: Assertion failed `{}`\n", location.file_name, location.line, msg);
 		std::abort();
 	}
-} 
+}
+
+[[noreturn]] 
+inline void unhandled(const std::string_view msg, const SourceLocation location = SourceLocation::current()) {
+	print("{}:{}: FIXME: `{}`\n", location.file_name, location.line, msg);
+	std::abort();
+}
 
 
 template <class T>

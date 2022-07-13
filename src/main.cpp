@@ -48,6 +48,10 @@ void print_statement(const Statement& statement, const int depth = 0) {
 	for (const auto& child : statement.children) {
 		print_statement(child, depth + 1);
 	}
+	if (statement.else_branch) {
+		print("Else:\n");
+		print_statement(*statement.else_branch, depth);
+	}
 }
 
 auto& operator<<(std::ostream& stream, const Token& token) {

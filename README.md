@@ -19,8 +19,8 @@ fn main(): i32 {
 - [X] variables
 - [ ] proper types (only supports i32 and bool atm)
 - [X] if statements
-- [ ] else statements
-- [ ] else if 
+- [X] else statements
+- [X] else if 
 - [X] while statements
 - [ ] variable scoping in statements
 - [ ] string support

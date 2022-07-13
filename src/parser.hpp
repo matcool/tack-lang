@@ -5,6 +5,7 @@
 #include <variant>
 #include "utils.hpp"
 #include "lexer.hpp"
+#include <memory>
 
 struct Type {
 	// TODO: enum for built in types, etc
@@ -123,6 +124,7 @@ enum class StatementType {
 	Return,     // statement returns an expression
 	If,
 	While,
+	Else,
 };
 
 struct Statement {
@@ -131,6 +133,7 @@ struct Statement {
 	Span span;
 	// TODO: make this a scope, that is if they hold statements
 	std::vector<Statement> children;
+	std::unique_ptr<Statement> else_branch; // optional, use unique_ptr instead of optional to not cause recursive struct
 };
 
 struct Function;
@@ -160,6 +163,7 @@ public:
 
 	Variable parse_var_decl();
 	Statement parse_statement();
+	Statement parse_if();
 
 	void parse_block(std::vector<Statement>&);
 
@@ -169,7 +173,7 @@ public:
 	Expression parse_exp_inner(int prio);
 	Expression parse_exp_primary();
 
-	void error_at_token(const Token& token, const std::string_view& msg) const;
+	[[noreturn]] void error_at_token(const Token& token, const std::string_view& msg) const;
 	Token& expect_token_type(Token& token, TokenType type, const std::string_view& msg) const;
 	
 	// Parses comma list enclosed by parenthesis (todo: customizable)

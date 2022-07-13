@@ -17,6 +17,10 @@ Checks: "*,
 	-misc-non-private-member-variables-in-classes,
 	-readability-function-cognitive-complexity,
 	-readability-braces-around-statements,
-	-hicpp-braces-around-statements
+	-hicpp-braces-around-statements,
+	-cppcoreguidelines-avoid-magic-numbers,
+	-readability-magic-numbers,
+	-readability-implicit-bool-conversion,
+	-concurrency-mt-unsafe
 "
 UseColor: true

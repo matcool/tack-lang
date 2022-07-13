@@ -49,12 +49,24 @@ void Compiler::compile_statement(Statement& statement) {
 		compile_expression(statement.expressions[0]);
 	} else if (statement.type == StatementType::If) {
 		compile_expression(statement.expressions[0]);
-		const auto label = format("{}_if_end_{}", m_cur_function->name, m_label_counter++);
+		const auto end_label = format("{}_if_end_{}", m_cur_function->name, m_label_counter++);
+		const auto else_label = format("{}_if_else_{}", m_cur_function->name, m_label_counter++);
 		write("cmp al, 1");
-		write("jne {}", label);
-		for (auto& child : statement.children)
+		write("jne {}", statement.else_branch ? else_label : end_label);
+		for (auto& child : statement.children) {
 			compile_statement(child);
-		write("{}:", label);
+		}
+		if (statement.else_branch) {
+			write("jmp {}", end_label);
+			write("{}:", else_label);
+			compile_statement(*statement.else_branch);
+		}
+		write("{}:", end_label);
+	} else if (statement.type == StatementType::Else) {
+		// TODO: Else is basically just a block statement, maybe rename it?
+		for (auto& child : statement.children) {
+			compile_statement(child);
+		}
 	} else if (statement.type == StatementType::While) {
 		const auto label_start = format("{}_while_start_{}", m_cur_function->name, m_label_counter++);
 		const auto label_end = format("{}_while_end_{}", m_cur_function->name, m_label_counter++);
@@ -67,7 +79,7 @@ void Compiler::compile_statement(Statement& statement) {
 		write("jmp {}", label_start);
 		write("{}:", label_end);
 	} else {
-		assert(false, "unimplemented");
+		unhandled(format("unimplemented statement {}", enum_name(statement.type)));
 	}
 }
 

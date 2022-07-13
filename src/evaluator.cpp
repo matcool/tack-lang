@@ -24,6 +24,7 @@ Evaluator::Value Evaluator::eval_function(Function& function, std::vector<Value>
 		const auto result = eval_statement(stmt, function, scope);
 		if (result) return *result;
 	}
+	unhandled("No return statement was reached.. implement implicit return for void");
 }
 
 std::optional<Evaluator::Value> Evaluator::eval_statement(Statement& stmt, Function& parent, Scope& scope) {
@@ -34,15 +35,27 @@ std::optional<Evaluator::Value> Evaluator::eval_statement(Statement& stmt, Funct
 	} else if (stmt.type == StatementType::If) {
 		const auto value = eval_expression(stmt.expressions[0], parent, scope);
 		if (std::get<bool>(value.data)) {
+			// TODO: avoid duplicating this code
 			for (auto& stmt : stmt.children) {
 				const auto result = eval_statement(stmt, parent, scope);
 				if (result) return *result;
 			}
+		} else if (stmt.else_branch) {
+			// here
+			const auto result = eval_statement(*stmt.else_branch, parent, scope);
+			if (result) return *result;
+		}
+	} else if (stmt.type == StatementType::Else) {
+		// and here
+		for (auto& stmt : stmt.children) {
+			const auto result = eval_statement(stmt, parent, scope);
+			if (result) return *result;
 		}
 	} else if (stmt.type == StatementType::While) {
 		while (true) {
 			const auto value = eval_expression(stmt.expressions[0], parent, scope);
 			if (!std::get<bool>(value.data)) break;
+			// and here
 			for (auto& stmt : stmt.children) {
 				const auto result = eval_statement(stmt, parent, scope);
 				if (result) return *result;

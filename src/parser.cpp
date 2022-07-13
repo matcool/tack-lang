@@ -1,6 +1,6 @@
 #include "parser.hpp"
 #include "format.hpp"
-
+#include "enums.hpp"
 
 Parser::Parser(const std::string_view& file_name, ArrayStream<Token> tokens)
 	: m_file_name(file_name),
@@ -92,12 +92,7 @@ Statement Parser::parse_statement() {
 			stmt.expressions.push_back(parse_expression());
 		return stmt;
 	} else if (first.type == TokenType::Keyword && first.data == "if") {
-		m_tokens.get();
-		Statement stmt { StatementType::If };
-		stmt.span = first.span;
-		stmt.expressions.push_back(parse_expression());
-		parse_block(stmt.children);
-		return stmt;
+		return parse_if();
 	} else if (first.type == TokenType::Keyword && first.data == "while") {
 		m_tokens.get();
 		Statement stmt { StatementType::While };
@@ -112,6 +107,29 @@ Statement Parser::parse_statement() {
 			{ exp }
 		};
 	}
+}
+
+Statement Parser::parse_if() {
+	const auto& token = m_tokens.get();
+	if (token != Token(TokenType::Keyword, "if")) {
+		error_at_token(token, "Expected if statement");
+	}
+	Statement stmt { StatementType::If };
+	stmt.span = token.span;
+	stmt.expressions.push_back(parse_expression());
+	parse_block(stmt.children);
+	if (m_tokens.peek() == Token(TokenType::Keyword, "else")) {
+		const auto& else_token = m_tokens.get();
+		if (m_tokens.peek() == Token(TokenType::Keyword, "if")) {
+			stmt.else_branch = std::make_unique<Statement>(parse_if());
+		} else {
+			auto child = std::make_unique<Statement>(Statement { StatementType::Else });
+			child->span = else_token.span;
+			parse_block(child->children);
+			stmt.else_branch = std::move(child);
+		}
+	}
+	return stmt;
 }
 
 OperatorType op_type_from_token(const Token& token) {

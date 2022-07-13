@@ -49,8 +49,16 @@ void TypeChecker::check_statement(Statement& stmt, Function& parent) {
 		if (type != Type { "bool" })
 			error_at_exp(stmt.expressions.front(), "Expected bool expression");
 		// TODO: proper scopes
-		for (auto& child : stmt.children)
+		for (auto& child : stmt.children) {
 			check_statement(child, parent);
+		}
+		if (stmt.else_branch) {
+			check_statement(*stmt.else_branch, parent);
+		}
+	} else if (stmt.type == StatementType::Else) {
+		for (auto& child : stmt.children) {
+			check_statement(child, parent);
+		}
 	} else {
 		error_at_stmt(stmt, format("what the heck {}", stmt.type));
 	}
