@@ -1,6 +1,6 @@
 use itertools::Itertools;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Keyword {
 	Fn,
 	Let,
@@ -12,13 +12,13 @@ pub enum Keyword {
 	False,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum OperatorToken {
 	Assign,
 	Add,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TokenKind {
 	Keyword(Keyword),
 	Identifier(String),
@@ -32,7 +32,7 @@ pub enum TokenKind {
 	TypeIndicator,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token {
 	pub kind: TokenKind,
 }

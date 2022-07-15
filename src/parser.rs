@@ -49,8 +49,8 @@ pub struct Parser {
 }
 
 #[derive(Debug)]
-pub enum ParserError {
-	InvalidToken,
+pub enum ParserError<> {
+	InvalidToken(Token),
 }
 
 impl Parser {
@@ -74,13 +74,13 @@ impl Parser {
 	pub fn parse(&mut self) -> Result<(), ParserError> {
 		while self.is_valid() {
 			let token = self.next();
-			match &token.kind {
+			match token.kind {
 				TokenKind::Keyword(Keyword::Fn) => {
 					let name;
 					if let TokenKind::Identifier(str) = &self.next().kind {
 						name = str.to_string();
 					} else {
-						return Err(ParserError::InvalidToken);
+						return Err(ParserError::InvalidToken(token.clone()));
 					}
 
 					assert!(matches!(self.next().kind, TokenKind::LeftParen));
@@ -99,8 +99,7 @@ impl Parser {
 					self.functions.push(function);
 				}
 				_ => {
-					println!("unknown token is {:?}", token);
-					return Err(ParserError::InvalidToken);
+					return Err(ParserError::InvalidToken(token.clone()));
 				}
 			}
 		}
