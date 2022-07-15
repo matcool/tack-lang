@@ -1,4 +1,5 @@
-fn main(): i32 {
-	let a: bool = false;
-	let b: i32 = 123;
+fn main() {
+	return 23;
+	true;
+	10;
 }
