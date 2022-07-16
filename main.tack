@@ -1,5 +1,9 @@
-fn main() {
-	return 23;
-	true;
-	10;
+fn foo(a: i32) {
+	return a;
+}
+
+// Hello there!
+fn main(): i32 {
+	// return 42
+	return 42;
 }

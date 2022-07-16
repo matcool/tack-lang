@@ -1,9 +1,21 @@
 use crate::lexer::{Keyword, Token, TokenKind};
 
 #[derive(Debug)]
+pub struct Type {
+	name: String,
+}
+
+#[derive(Debug)]
+pub struct Variable {
+	name: String,
+	ty: Type,
+}
+
+#[derive(Debug)]
 pub enum ExpressionKind {
 	NumberLiteral(i32),
 	BoolLiteral(bool),
+	Variable(String),
 }
 
 #[derive(Debug)]
@@ -39,7 +51,22 @@ impl Statement {
 #[derive(Debug)]
 pub struct Function {
 	name: String,
+	arguments: Vec<Variable>,
+	return_type: Type,
 	statements: Vec<Statement>,
+}
+
+impl Function {
+	fn new(name: String) -> Function {
+		Function {
+			name,
+			arguments: vec![],
+			return_type: Type {
+				name: "unknown".to_string(),
+			},
+			statements: vec![],
+		}
+	}
 }
 
 pub struct Parser {
@@ -102,16 +129,29 @@ impl Parser {
 				TokenKind::Keyword(Keyword::Fn) => {
 					let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
 
+					let mut function = Function::new(name);
+
 					expect_token!(self.next()?, TokenKind::LeftParen)?;
-					// TODO: parse args
-					expect_token!(self.next()?, TokenKind::RightParen)?;
+					self.parse_comma_list(|selfish: &mut Parser| {
+						function.arguments.push(selfish.parse_var_decl()?);
+						Ok(())
+					})?;
 
-					// TODO: parse ret type
-
-					let mut function = Function {
-						name,
-						statements: vec![],
-					};
+					let next = self.peek()?;
+					match next.kind {
+						TokenKind::TypeIndicator => {
+							self.next()?;
+							function.return_type = self.parse_type()?;
+						}
+						TokenKind::LeftBracket => {
+							function.return_type = Type {
+								name: "void".to_string(),
+							};
+						}
+						_ => {
+							return Err(ParserError::InvalidToken(self.next()?));
+						}
+					}
 
 					self.parse_block(&mut function.statements)?;
 
@@ -119,6 +159,32 @@ impl Parser {
 				}
 				_ => {
 					return Err(ParserError::InvalidToken(token));
+				}
+			}
+		}
+		Ok(())
+	}
+
+	fn parse_comma_list<C: FnMut(&mut Parser) -> Result<(), ParserError>>(
+		&mut self,
+		mut callable: C,
+	) -> Result<(), ParserError> {
+		loop {
+			if let TokenKind::RightParen = self.peek()?.kind {
+				self.next()?;
+				break;
+			}
+
+			callable(self)?;
+
+			let next = self.next()?;
+			match next.kind {
+				TokenKind::Comma => {}
+				TokenKind::RightParen => {
+					break;
+				}
+				_ => {
+					return Err(ParserError::InvalidToken(next));
 				}
 			}
 		}
@@ -133,6 +199,18 @@ impl Parser {
 		}
 		self.next()?; // RightBracket
 		Ok(())
+	}
+
+	fn parse_var_decl(&mut self) -> Result<Variable, ParserError> {
+		let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
+		expect_token!(self.next()?, TokenKind::TypeIndicator)?;
+		let ty = self.parse_type()?;
+		Ok(Variable { name, ty })
+	}
+
+	fn parse_type(&mut self) -> Result<Type, ParserError> {
+		let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
+		Ok(Type { name })
 	}
 
 	fn parse_statement(&mut self) -> Result<Statement, ParserError> {
@@ -159,11 +237,15 @@ impl Parser {
 				ExpressionKind::NumberLiteral(number),
 				vec![],
 			)),
-			TokenKind::Keyword(value @ (Keyword::True | Keyword::False))  => Ok(
-				Expression::new(ExpressionKind::BoolLiteral(value == Keyword::True), vec![]),
-			),
+			TokenKind::Keyword(value @ (Keyword::True | Keyword::False)) => Ok(Expression::new(
+				ExpressionKind::BoolLiteral(value == Keyword::True),
+				vec![],
+			)),
+			TokenKind::Identifier(name) => {
+				Ok(Expression::new(ExpressionKind::Variable(name), vec![]))
+			}
 			kind => {
-				todo!("Unimplemented expression {:?}", kind);
+				todo!("expression {:?}", kind);
 			}
 		}
 	}

@@ -12,13 +12,14 @@ pub enum Keyword {
 	False,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum OperatorToken {
 	Assign,
 	Add,
+	Divide,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
 	Keyword(Keyword),
 	Identifier(String),
@@ -30,6 +31,7 @@ pub enum TokenKind {
 	LeftBracket,
 	RightBracket,
 	TypeIndicator,
+	Comma,
 }
 
 #[derive(Debug, Clone)]
@@ -72,8 +74,20 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 				'{' => TokenKind::LeftBracket,
 				'}' => TokenKind::RightBracket,
 				':' => TokenKind::TypeIndicator,
+				',' => TokenKind::Comma,
 				'=' => TokenKind::Operator(OperatorToken::Assign),
 				'+' => TokenKind::Operator(OperatorToken::Add),
+				'/' => {
+					if *self.iterator.peek()? == '/' {
+						(&mut self.iterator)
+							.take_while(|c| *c != '\n')
+							.for_each(drop);
+						// use recursion to skip chars inside the match
+						return self.get_token();
+					} else {
+						TokenKind::Operator(OperatorToken::Divide)
+					}
+				}
 				'0'..='9' => {
 					let mut number: String = self
 						.iterator
