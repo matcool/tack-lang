@@ -38,11 +38,11 @@ pub struct Token {
 }
 
 pub struct Lexer<I: Iterator<Item = char>> {
-	iterator: std::iter::Peekable<I>
+	iterator: std::iter::Peekable<I>,
 }
 
 pub struct LexerIterator<'a, I: Iterator<Item = char>> {
-	lexer: &'a mut Lexer<I>
+	lexer: &'a mut Lexer<I>,
 }
 
 impl<'a, I: Iterator<Item = char>> Iterator for LexerIterator<'a, I> {
@@ -75,16 +75,20 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 				'=' => TokenKind::Operator(OperatorToken::Assign),
 				'+' => TokenKind::Operator(OperatorToken::Add),
 				'0'..='9' => {
-					let mut number: String =
-						self.iterator.peeking_take_while(|c| c.is_ascii_digit()).collect();
+					let mut number: String = self
+						.iterator
+						.peeking_take_while(|c| c.is_ascii_digit())
+						.collect();
 					// scary...
 					number.insert(0, ch);
 					// TODO: make this function return result
-					TokenKind::Number(i32::from_str_radix(number.as_str(), 10).unwrap())
+					TokenKind::Number(number.as_str().parse().unwrap())
 				}
 				ch => {
-					let mut identifer: String =
-						self.iterator.peeking_take_while(|c| c.is_alphanumeric()).collect();
+					let mut identifer: String = self
+						.iterator
+						.peeking_take_while(|c| c.is_alphanumeric())
+						.collect();
 					// not very elegant :(
 					identifer.insert(0, ch);
 					match identifer.as_str() {

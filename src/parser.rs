@@ -3,13 +3,13 @@ use crate::lexer::{Keyword, Token, TokenKind};
 #[derive(Debug)]
 pub enum ExpressionKind {
 	NumberLiteral(i32),
-	BoolLiteral(bool)
+	BoolLiteral(bool),
 }
 
 #[derive(Debug)]
 pub struct Expression {
 	kind: ExpressionKind,
-	children: Vec<Expression>
+	children: Vec<Expression>,
 }
 
 impl Expression {
@@ -21,13 +21,13 @@ impl Expression {
 #[derive(Debug)]
 pub enum StatementKind {
 	Expression,
-	Return
+	Return,
 }
 
 #[derive(Debug)]
 pub struct Statement {
 	kind: StatementKind,
-	children: Vec<Expression>
+	children: Vec<Expression>,
 }
 
 impl Statement {
@@ -43,100 +43,125 @@ pub struct Function {
 }
 
 pub struct Parser {
-	tokens: Vec<Token>,
-	index: usize,
-	pub functions: Vec<Function>
+	tokens: std::iter::Peekable<std::vec::IntoIter<Token>>,
+	// index: usize,
+	pub functions: Vec<Function>,
 }
 
 #[derive(Debug)]
-pub enum ParserError<> {
+pub enum ParserError {
 	InvalidToken(Token),
+	MissingToken, // for when the iterator reaches the end, def need a better name
+}
+
+macro_rules! expect_token {
+	($token:expr, $pattern:pat, $value:ident) => {{
+		let token = $token;
+		match token.kind {
+			$pattern => Ok($value),
+			_ => Err(ParserError::InvalidToken(token)),
+		}
+	}};
+	($token:expr, $pattern:pat) => {{
+		let token = $token;
+		match token.kind {
+			$pattern => Ok(token),
+			_ => Err(ParserError::InvalidToken(token)),
+		}
+	}};
 }
 
 impl Parser {
-	pub fn new(tokens: Vec<Token>) -> Parser {
-		Parser { tokens, index: 0, functions: Vec::new() }
+	pub fn new(tokens: std::iter::Peekable<std::vec::IntoIter<Token>>) -> Parser {
+		Parser {
+			tokens,
+			functions: vec![],
+		}
 	}
 
-	fn peek(&self) -> &Token {
-		&self.tokens[self.index]
+	fn next(&mut self) -> Result<Token, ParserError> {
+		match self.tokens.next() {
+			Some(x) => {
+				println!("Parser::next is {:?}", x);
+				Ok(x)
+			}
+			None => Err(ParserError::MissingToken),
+		}
 	}
 
-	fn next(&mut self) -> &Token {
-		self.index += 1;
-		&self.tokens[self.index - 1]
-	}
-
-	fn is_valid(&self) -> bool {
-		self.index < self.tokens.len()
+	fn peek(&mut self) -> Result<&Token, ParserError> {
+		match self.tokens.peek() {
+			Some(x) => Ok(x),
+			None => Err(ParserError::MissingToken),
+		}
 	}
 
 	pub fn parse(&mut self) -> Result<(), ParserError> {
-		while self.is_valid() {
-			let token = self.next();
+		while let Ok(token) = self.next() {
 			match token.kind {
 				TokenKind::Keyword(Keyword::Fn) => {
-					let name;
-					if let TokenKind::Identifier(str) = &self.next().kind {
-						name = str.to_string();
-					} else {
-						return Err(ParserError::InvalidToken(token.clone()));
-					}
+					let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
 
-					assert!(matches!(self.next().kind, TokenKind::LeftParen));
+					expect_token!(self.next()?, TokenKind::LeftParen)?;
 					// TODO: parse args
-					assert!(matches!(self.next().kind, TokenKind::RightParen));
+					expect_token!(self.next()?, TokenKind::RightParen)?;
 
 					// TODO: parse ret type
 
 					let mut function = Function {
 						name,
-						statements: Vec::new(),
+						statements: vec![],
 					};
 
-					self.parse_block(&mut function.statements);
+					self.parse_block(&mut function.statements)?;
 
 					self.functions.push(function);
 				}
 				_ => {
-					return Err(ParserError::InvalidToken(token.clone()));
+					return Err(ParserError::InvalidToken(token));
 				}
 			}
 		}
 		Ok(())
 	}
 
-	fn parse_block(&mut self, statements: &mut Vec<Statement>) {
-		assert!(matches!(self.next().kind, TokenKind::LeftBracket));
-		while !matches!(self.peek().kind, TokenKind::RightBracket) {
-			statements.push(self.parse_statement());
-			assert!(matches!(self.next().kind, TokenKind::Semicolon));
+	fn parse_block(&mut self, statements: &mut Vec<Statement>) -> Result<(), ParserError> {
+		expect_token!(self.next()?, TokenKind::LeftBracket)?;
+		while !matches!(self.peek()?.kind, TokenKind::RightBracket) {
+			statements.push(self.parse_statement()?);
+			expect_token!(self.next()?, TokenKind::Semicolon)?;
 		}
-		self.next(); // RightBracket
+		self.next()?; // RightBracket
+		Ok(())
 	}
 
-	fn parse_statement(&mut self) -> Statement {
-		let token = self.peek();
-		match &token.kind {
+	fn parse_statement(&mut self) -> Result<Statement, ParserError> {
+		let token = self.peek()?;
+		match token.kind {
 			TokenKind::Keyword(Keyword::Return) => {
-				self.next(); // Return
-				Statement::new(StatementKind::Return, vec![self.parse_expression()])
-			},
-			_ => {
-				Statement::new(StatementKind::Expression, vec![self.parse_expression()])
+				self.next()?; // Return
+				Ok(Statement::new(
+					StatementKind::Return,
+					vec![self.parse_expression()?],
+				))
 			}
+			_ => Ok(Statement::new(
+				StatementKind::Expression,
+				vec![self.parse_expression()?],
+			)),
 		}
 	}
 
-	fn parse_expression(&mut self) -> Expression {
-		let token = self.next();
-		match &token.kind {
-			TokenKind::Number(number) => {
-				Expression::new(ExpressionKind::NumberLiteral(*number), vec![])
-			},
-			TokenKind::Keyword(value) if matches!(value, Keyword::True | Keyword::False) => {
-				Expression::new(ExpressionKind::BoolLiteral(*value == Keyword::True), vec![])
-			},
+	fn parse_expression(&mut self) -> Result<Expression, ParserError> {
+		let token = self.next()?;
+		match token.kind {
+			TokenKind::Number(number) => Ok(Expression::new(
+				ExpressionKind::NumberLiteral(number),
+				vec![],
+			)),
+			TokenKind::Keyword(value @ (Keyword::True | Keyword::False))  => Ok(
+				Expression::new(ExpressionKind::BoolLiteral(value == Keyword::True), vec![]),
+			),
 			kind => {
 				todo!("Unimplemented expression {:?}", kind);
 			}

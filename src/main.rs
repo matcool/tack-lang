@@ -13,7 +13,7 @@ fn main() {
 
 	let tokens: Vec<Token> = lexer.iter().collect();
 
-	let mut parser = Parser::new(tokens);
+	let mut parser = Parser::new(tokens.into_iter().peekable());
 
 	parser.parse().unwrap();
 
