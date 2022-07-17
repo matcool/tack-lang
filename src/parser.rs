@@ -2,13 +2,13 @@ use crate::lexer::{Keyword, Token, TokenKind};
 
 #[derive(Debug)]
 pub struct Type {
-	name: String,
+	pub name: String,
 }
 
 #[derive(Debug)]
 pub struct Variable {
-	name: String,
-	ty: Type,
+	pub name: String,
+	pub ty: Type,
 }
 
 #[derive(Debug)]
@@ -20,8 +20,8 @@ pub enum ExpressionKind {
 
 #[derive(Debug)]
 pub struct Expression {
-	kind: ExpressionKind,
-	children: Vec<Expression>,
+	pub kind: ExpressionKind,
+	pub children: Vec<Expression>,
 }
 
 impl Expression {
@@ -38,8 +38,8 @@ pub enum StatementKind {
 
 #[derive(Debug)]
 pub struct Statement {
-	kind: StatementKind,
-	children: Vec<Expression>,
+	pub kind: StatementKind,
+	pub children: Vec<Expression>,
 }
 
 impl Statement {
@@ -50,10 +50,10 @@ impl Statement {
 
 #[derive(Debug)]
 pub struct Function {
-	name: String,
-	arguments: Vec<Variable>,
-	return_type: Type,
-	statements: Vec<Statement>,
+	pub name: String,
+	pub arguments: Vec<Variable>,
+	pub return_type: Type,
+	pub statements: Vec<Statement>,
 }
 
 impl Function {

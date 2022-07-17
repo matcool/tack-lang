@@ -5,6 +5,8 @@ mod lexer;
 use lexer::*;
 mod parser;
 use parser::Parser;
+mod compiler;
+use compiler::Compiler;
 
 fn main() {
 	let contents = std::fs::read_to_string("main.tack").unwrap();
@@ -18,4 +20,8 @@ fn main() {
 	parser.parse().unwrap();
 
 	println!("{:#?}", parser.functions);
+
+	let mut compiler = Compiler::new(parser);
+
+	println!("Compiler returned:\n{}", compiler.compile());
 }
