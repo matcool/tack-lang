@@ -130,6 +130,14 @@ int main(int argc, char** argv) {
 
 	ArrayStream token_stream(ArrayView{tokens});
 	Parser parser(args[1], token_stream);
+
+	parser.m_functions.push_back(Function {
+		.return_type = Type { "void" },
+		.name = "print",
+		.arguments = { Variable { Type { "i32" }, "number" } },
+		.builtin = true
+	});
+
 	parser.parse();
 	print("File parsed\n");
 
@@ -138,6 +146,7 @@ int main(int argc, char** argv) {
 
 	if (show_ast) {
 		for (auto& function : parser.m_functions) {
+			if (function.builtin) continue;
 			print("Function {}: {}\n", function.name, function.return_type.name);
 			for (auto& statement : function.statements) {
 				print_statement(statement, 1);

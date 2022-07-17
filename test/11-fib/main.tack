@@ -1,0 +1,19 @@
+fn fib(i: i32): i32 {
+	// need a < operator :/
+	if i == 0 {
+		return 0;
+	} else if i == 1 {
+		return 1;
+	} else {
+		return fib(i - 1) + fib(i - 2);
+	}
+}
+
+fn main(): i32 {
+	let i: i32 = 1;
+	while i != 10 {
+		print(fib(i));
+		i = i + 1;
+	}
+	return 0;
+}

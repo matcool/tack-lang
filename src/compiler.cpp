@@ -14,6 +14,49 @@ void Compiler::compile() {
 }
 
 void Compiler::compile_function(Function& function) {
+	if (function.builtin) {
+		if (function.name == "print") {
+			write(R"(
+print:
+mov eax, [esp + 4] ; number
+
+mov ecx, esp ; buffer ptr
+sub esp, 12  ; buffer of 12 bytes
+mov ebx, 0   ; buffer count
+
+print_loop:
+sub ecx, 1 ; move pointer to where we're writing
+; idiv
+mov esi, 10 ; divide by 10
+mov edx, 0 ; clear edx for idiv
+idiv esi ; divide edx|eax by 10, result -> eax, modulo -> edx
+add edx, '0' ; offset by ascii '0'
+mov BYTE [ecx], dl ; write edx (lower byte) into the buffer
+add ebx, 1 ; increase buffer count
+
+cmp eax, 0
+jg print_loop ; jump if greater than 0
+
+mov eax, 4   ; WRITE syscall
+mov edx, ebx ; buf size
+mov ebx, 1   ; fd 1 (stdout)
+; ecx          buf*
+int 0x80 ; syscall
+
+mov eax, 4   ; WRITE syscall
+mov BYTE [ecx], 10 ; newline
+mov edx, 1   ; buf size
+int 0x80 ; syscall
+
+add esp, 12 ; revert buffer
+
+ret)");
+		} else {
+			assert(false, format("unknown builtin {}", function.name));
+		}
+		return;
+	}
+
 	write("{}:", function.name);
 	m_cur_function = &function;
 	m_var_counter = 0;

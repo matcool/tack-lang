@@ -148,6 +148,7 @@ struct Function {
 	std::vector<Variable> arguments;
 	Scope scope;
 	std::vector<Statement> statements;
+	bool builtin = false;
 };
 
 class Parser {

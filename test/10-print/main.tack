@@ -1,0 +1,6 @@
+fn main(): i32 {
+	let a: i32 = 420;
+	a = a - 6 * 9;
+	print(a);
+	return 0;
+}

@@ -13,6 +13,7 @@ void TypeChecker::check() {
 }
 
 void TypeChecker::check_function(Function& function) {
+	if (function.builtin) return;
 	for (auto& stmt : function.statements) {
 		check_statement(stmt, function);
 	}
@@ -115,8 +116,14 @@ Type TypeChecker::check_expression(Expression& expression, Function& parent, con
 		for (size_t i = 0; i < function.arguments.size(); ++i) {
 			const auto arg_type = function.arguments[i].type;
 			const auto type = check_expression(expression.children[i], parent, arg_type);
-			if (type != arg_type)
+			
+			if (type.reference) {
+				replace_with_cast(expression.children[i], type.remove_reference());
+			}
+
+			if (!type.unref_eq(arg_type)) {
 				error_at_exp(expression.children[i], format("Type mismatch, expected {} got {}", type, arg_type));
+			}
 		}
 		return function.return_type;
 	} else if (expression.type == ExpressionType::Variable) {
