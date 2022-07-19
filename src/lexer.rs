@@ -12,11 +12,16 @@ pub enum Keyword {
 	False,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum OperatorToken {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Operator {
 	Assign,
 	Add,
+	Sub, // ☻
 	Divide,
+	Multiply,
+	Equals,
+	NotEquals,
+	Not
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,7 +29,7 @@ pub enum TokenKind {
 	Keyword(Keyword),
 	Identifier(String),
 	Number(i32),
-	Operator(OperatorToken),
+	Operator(Operator),
 	Semicolon,
 	LeftParen,
 	RightParen,
@@ -32,6 +37,7 @@ pub enum TokenKind {
 	RightBracket,
 	TypeIndicator,
 	Comma,
+	// TODO: string
 }
 
 #[derive(Debug, Clone)]
@@ -60,10 +66,18 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 		Lexer { iterator }
 	}
 
+	fn peek(&mut self) -> Option<char> {
+		Some(*self.iterator.peek()?)
+	}
+
+	fn next(&mut self) -> Option<char> {
+		self.iterator.next()
+	}
+
 	pub fn get_token(&mut self) -> Option<Token> {
 		let mut ch;
 		while {
-			ch = self.iterator.next()?;
+			ch = self.next()?;
 			ch.is_whitespace()
 		} {}
 		let token = Token {
@@ -75,8 +89,25 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 				'}' => TokenKind::RightBracket,
 				':' => TokenKind::TypeIndicator,
 				',' => TokenKind::Comma,
-				'=' => TokenKind::Operator(OperatorToken::Assign),
-				'+' => TokenKind::Operator(OperatorToken::Add),
+				'+' => TokenKind::Operator(Operator::Add),
+				'-' => TokenKind::Operator(Operator::Sub),
+				'*' => TokenKind::Operator(Operator::Multiply),
+				'=' => {
+					if self.peek()? == '=' {
+						self.next()?;
+						TokenKind::Operator(Operator::Equals)
+					} else {
+						TokenKind::Operator(Operator::Assign)
+					}
+				}
+				'!' => {
+					if self.peek()? == '=' {
+						self.next()?;
+						TokenKind::Operator(Operator::NotEquals)
+					} else {
+						TokenKind::Operator(Operator::Not)
+					}
+				}
 				'/' => {
 					if *self.iterator.peek()? == '/' {
 						(&mut self.iterator)
@@ -85,7 +116,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 						// use recursion to skip chars inside the match
 						return self.get_token();
 					} else {
-						TokenKind::Operator(OperatorToken::Divide)
+						TokenKind::Operator(Operator::Divide)
 					}
 				}
 				'0'..='9' => {

@@ -1,6 +1,8 @@
-
-// Hello there!
 fn main(): i32 {
-	// return 42
-	return 42;
+	// let a: i32 = 9;
+	// let b: i32 = 10;
+	let c: i32 = 0;
+	// c = 1;
+	// c = c;
+	return c;
 }

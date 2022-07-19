@@ -1,4 +1,4 @@
-use crate::parser::{Parser, Function, Statement, StatementKind, Expression, ExpressionKind};
+use crate::parser::{Expression, ExpressionKind, Function, Parser, Statement, StatementKind};
 
 pub struct Compiler {
 	parser: Parser,
@@ -7,7 +7,10 @@ pub struct Compiler {
 
 impl Compiler {
 	pub fn new(parser: Parser) -> Compiler {
-		Compiler { parser: parser.into(), code: String::from("").into() }
+		Compiler {
+			parser: parser.into(),
+			code: String::from("").into(),
+		}
 	}
 
 	fn write<T: ToString>(&self, value: T) {
@@ -24,9 +27,9 @@ impl Compiler {
 
 	fn compile_function(&self, function: &Function) {
 		self.write(format!("{}:", function.name.clone()));
-		
-		for statement in &function.statements {
-			self.compile_statement(statement, function);
+
+		for statement in &function.scope.statements {
+			self.compile_statement(&statement.borrow(), function);
 		}
 	}
 
@@ -37,7 +40,7 @@ impl Compiler {
 					self.compile_expression(expr, function);
 				}
 				self.write("ret");
-			},
+			}
 			StatementKind::Expression => {
 				self.compile_expression(&statement.children[0], function);
 			}
@@ -45,15 +48,18 @@ impl Compiler {
 	}
 
 	fn compile_expression(&self, expression: &Expression, function: &Function) {
-		match &expression.kind {
+		match expression.kind {
 			ExpressionKind::NumberLiteral(number) => {
 				self.write(format!("mov eax, {}", number));
-			},
+			}
 			ExpressionKind::BoolLiteral(value) => {
-				self.write(format!("mov al, {}", *value as u8));
-			},
-			ExpressionKind::Variable(_name) => {
+				self.write(format!("mov al, {}", value as u8));
+			}
+			ExpressionKind::Variable(_) => {
 				todo!("variables");
+			}
+			ref k => {
+				todo!("statement {:?}", k);
 			}
 		}
 	}

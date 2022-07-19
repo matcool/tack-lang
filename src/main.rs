@@ -6,7 +6,6 @@ use lexer::*;
 mod parser;
 use parser::Parser;
 mod checker;
-use checker::TypeChecker;
 mod compiler;
 use compiler::Compiler;
 
@@ -19,12 +18,9 @@ fn main() {
 	let mut parser = Parser::new(tokens.into_iter().peekable());
 	parser.parse().unwrap();
 
-	println!("{:#?}", parser.functions);
+	// println!("{:#?}", parser.functions);
 
-	let mut checker = TypeChecker::new(&mut parser);
-	checker.check().unwrap();
-
-	drop(checker);
+	checker::check_types(&parser).unwrap();
 
 	let compiler = Compiler::new(parser);
 

@@ -1,21 +1,42 @@
-use crate::lexer::{Keyword, Token, TokenKind};
+use crate::lexer::{Keyword, Operator, Token, TokenKind};
+use std::{cell::RefCell};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Type {
 	pub name: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Variable {
 	pub name: String,
 	pub ty: Type,
+}
+
+impl Operator {
+	const MAX_PRECEDENCE: i32 = 3;
+	fn precedence(&self) -> i32 {
+		match self {
+			Operator::Assign => 0,
+			Operator::Equals | Operator::NotEquals => 2,
+			Operator::Add | Operator::Sub => 2,
+			Operator::Multiply | Operator::Divide => 3,
+			_ => 9999
+		}
+	}
+	pub fn is_binary(&self) -> bool {
+		!matches!(self, Operator::Not)
+	}
 }
 
 #[derive(Debug)]
 pub enum ExpressionKind {
 	NumberLiteral(i32),
 	BoolLiteral(bool),
+	Declaration(Variable),
 	Variable(String),
+	Operator(Operator),
+	Call(String),
+	Cast,
 }
 
 #[derive(Debug)]
@@ -49,11 +70,18 @@ impl Statement {
 }
 
 #[derive(Debug)]
+pub struct Scope {
+	pub parent: Option<Box<Scope>>,
+	pub statements: Vec<RefCell<Statement>>,
+	pub variables: RefCell<Vec<Variable>>,
+}
+
+#[derive(Debug)]
 pub struct Function {
 	pub name: String,
 	pub arguments: Vec<Variable>,
 	pub return_type: Type,
-	pub statements: Vec<Statement>,
+	pub scope: Box<Scope>,
 }
 
 impl Function {
@@ -64,7 +92,11 @@ impl Function {
 			return_type: Type {
 				name: "unknown".to_string(),
 			},
-			statements: vec![],
+			scope: Box::new(Scope {
+				parent: None,
+				statements: vec![],
+				variables: vec![].into()
+			}),
 		}
 	}
 }
@@ -109,7 +141,7 @@ impl Parser {
 	fn next(&mut self) -> Result<Token, ParserError> {
 		match self.tokens.next() {
 			Some(x) => {
-				println!("Parser::next is {:?}", x);
+				// println!("Parser::next is {:?}", x);
 				Ok(x)
 			}
 			None => Err(ParserError::MissingToken),
@@ -132,7 +164,7 @@ impl Parser {
 					let mut function = Function::new(name);
 
 					expect_token!(self.next()?, TokenKind::LeftParen)?;
-					self.parse_comma_list(|selfish: &mut Parser| {
+					self.parse_comma_list(|selfish: &mut Self| {
 						function.arguments.push(selfish.parse_var_decl()?);
 						Ok(())
 					})?;
@@ -153,7 +185,7 @@ impl Parser {
 						}
 					}
 
-					self.parse_block(&mut function.statements)?;
+					self.parse_block(&mut function.scope.statements)?;
 
 					self.functions.push(function);
 				}
@@ -165,7 +197,7 @@ impl Parser {
 		Ok(())
 	}
 
-	fn parse_comma_list<C: FnMut(&mut Parser) -> Result<(), ParserError>>(
+	fn parse_comma_list<C: FnMut(&mut Self) -> Result<(), ParserError>>(
 		&mut self,
 		mut callable: C,
 	) -> Result<(), ParserError> {
@@ -191,10 +223,10 @@ impl Parser {
 		Ok(())
 	}
 
-	fn parse_block(&mut self, statements: &mut Vec<Statement>) -> Result<(), ParserError> {
+	fn parse_block(&mut self, statements: &mut Vec<RefCell<Statement>>) -> Result<(), ParserError> {
 		expect_token!(self.next()?, TokenKind::LeftBracket)?;
 		while !matches!(self.peek()?.kind, TokenKind::RightBracket) {
-			statements.push(self.parse_statement()?);
+			statements.push(self.parse_statement()?.into());
 			expect_token!(self.next()?, TokenKind::Semicolon)?;
 		}
 		self.next()?; // RightBracket
@@ -230,7 +262,7 @@ impl Parser {
 		}
 	}
 
-	fn parse_expression(&mut self) -> Result<Expression, ParserError> {
+	fn parse_expression_primary(&mut self) -> Result<Expression, ParserError> {
 		let token = self.next()?;
 		match token.kind {
 			TokenKind::Number(number) => Ok(Expression::new(
@@ -244,9 +276,35 @@ impl Parser {
 			TokenKind::Identifier(name) => {
 				Ok(Expression::new(ExpressionKind::Variable(name), vec![]))
 			}
+			TokenKind::Keyword(Keyword::Let) => {
+				let var = self.parse_var_decl()?;
+				Ok(Expression::new(ExpressionKind::Declaration(var), vec![]))
+			}
 			kind => {
 				todo!("expression {:?}", kind);
 			}
 		}
+	}
+
+	fn parse_expression_inner(&mut self, prec: i32) -> Result<Expression, ParserError> {
+		if prec > Operator::MAX_PRECEDENCE {
+			return self.parse_expression_primary();
+		}
+		let part = self.parse_expression_inner(prec + 1)?;
+		let next = self.peek()?;
+		match next.kind {
+			TokenKind::Operator(operator) if operator.precedence() == prec => {
+				self.next()?;
+				Ok(Expression::new(
+					ExpressionKind::Operator(operator),
+					vec![part, self.parse_expression_inner(prec)?],
+				))
+			}
+			_ => Ok(part),
+		}
+	}
+
+	fn parse_expression(&mut self) -> Result<Expression, ParserError> {
+		self.parse_expression_inner(0)
 	}
 }
