@@ -47,7 +47,7 @@ impl Compiler {
 		}
 	}
 
-	fn compile_expression(&self, expression: &Expression, function: &Function) {
+	fn compile_expression(&self, expression: &Expression, _function: &Function) {
 		match expression.kind {
 			ExpressionKind::NumberLiteral(number) => {
 				self.write(format!("mov eax, {}", number));

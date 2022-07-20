@@ -2,11 +2,13 @@
 #![allow(dead_code)]
 
 mod lexer;
-use lexer::*;
 mod parser;
-use parser::Parser;
 mod checker;
 mod compiler;
+
+use lexer::*;
+use parser::Parser;
+use checker::TypeChecker;
 use compiler::Compiler;
 
 fn main() {
@@ -18,10 +20,11 @@ fn main() {
 	let mut parser = Parser::new(tokens.into_iter().peekable());
 	parser.parse().unwrap();
 
-	// println!("{:#?}", parser.functions);
-
-	checker::check_types(&parser).unwrap();
-
+	let checker = TypeChecker::new(&parser);
+	checker.check().unwrap();
+	
+	println!("{:#?}", parser.functions);
+	
 	let compiler = Compiler::new(parser);
 
 	println!("Compiler returned:\n{}", compiler.compile());

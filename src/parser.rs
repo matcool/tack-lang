@@ -1,9 +1,27 @@
 use crate::lexer::{Keyword, Operator, Token, TokenKind};
-use std::{cell::RefCell};
+use std::cell::RefCell;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Type {
 	pub name: String,
+	pub reference: bool,
+}
+
+impl Type {
+	pub fn new<I: ToString>(name: I) -> Type {
+		Type {
+			name: name.to_string(),
+			reference: false,
+		}
+	}
+}
+
+impl std::fmt::Display for Type {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.name)?;
+		if self.reference { write!(f, "&")?; }
+		Ok(())
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -20,7 +38,7 @@ impl Operator {
 			Operator::Equals | Operator::NotEquals => 2,
 			Operator::Add | Operator::Sub => 2,
 			Operator::Multiply | Operator::Divide => 3,
-			_ => 9999
+			_ => 9999,
 		}
 	}
 	pub fn is_binary(&self) -> bool {
@@ -43,11 +61,16 @@ pub enum ExpressionKind {
 pub struct Expression {
 	pub kind: ExpressionKind,
 	pub children: Vec<Expression>,
+	pub value_type: Type,
 }
 
 impl Expression {
 	pub fn new(kind: ExpressionKind, children: Vec<Expression>) -> Expression {
-		Expression { kind, children }
+		Expression {
+			kind,
+			children,
+			value_type: Type::new("unknown"),
+		}
 	}
 }
 
@@ -89,13 +112,11 @@ impl Function {
 		Function {
 			name,
 			arguments: vec![],
-			return_type: Type {
-				name: "unknown".to_string(),
-			},
+			return_type: Type::new("unknown"),
 			scope: Box::new(Scope {
 				parent: None,
 				statements: vec![],
-				variables: vec![].into()
+				variables: vec![].into(),
 			}),
 		}
 	}
@@ -176,9 +197,7 @@ impl Parser {
 							function.return_type = self.parse_type()?;
 						}
 						TokenKind::LeftBracket => {
-							function.return_type = Type {
-								name: "void".to_string(),
-							};
+							function.return_type = Type::new("void");
 						}
 						_ => {
 							return Err(ParserError::InvalidToken(self.next()?));
@@ -242,7 +261,7 @@ impl Parser {
 
 	fn parse_type(&mut self) -> Result<Type, ParserError> {
 		let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
-		Ok(Type { name })
+		Ok(Type::new(name))
 	}
 
 	fn parse_statement(&mut self) -> Result<Statement, ParserError> {
