@@ -36,6 +36,7 @@ impl Expression {
 pub enum TypeCheckerError {
 	TypeMismatch(String),
 	VariableNotFound(String),
+	VariableAlreadyExists(String),
 }
 
 pub struct TypeChecker<'a> {
@@ -109,8 +110,21 @@ impl TypeChecker<'_> {
 			ExpressionKind::NumberLiteral(_) => Ok(Type::new("i32")),
 			ExpressionKind::BoolLiteral(_) => Ok(Type::new("bool")),
 			ExpressionKind::Operator(op) if op.is_binary() => {
-				let rhs = self.check_expression(&mut expression.children[1], function, scope)?;
-				let lhs = self.check_expression(&mut expression.children[0], function, scope)?;
+				let lhs;
+				let rhs;
+				if op == &Operator::Assign {
+					rhs = self.check_expression(&mut expression.children[1], function, scope)?;
+					lhs = self.check_expression(&mut expression.children[0], function, scope)?;
+
+					if !lhs.reference {
+						return Err(TypeCheckerError::TypeMismatch(
+							"Left hand side of assignment must be reference".into(),
+						));
+					}
+				} else {
+					lhs = self.check_expression(&mut expression.children[0], function, scope)?;
+					rhs = self.check_expression(&mut expression.children[1], function, scope)?;
+				}
 
 				if !lhs.unref_eq(&rhs) {
 					return Err(TypeCheckerError::TypeMismatch(format!(
@@ -119,12 +133,31 @@ impl TypeChecker<'_> {
 					)));
 				}
 
+				if op != &Operator::Assign {
+					if lhs.reference {
+						expression.children[0].replace_with_cast(lhs.remove_reference());
+					}
+				}
+
+				if rhs.reference {
+					expression.children[1].replace_with_cast(rhs.remove_reference());
+				}
+
 				match op {
 					Operator::Equals | Operator::NotEquals => Ok(Type::new("bool")),
 					_ => Ok(lhs.remove_reference()),
 				}
 			}
 			ExpressionKind::Declaration(var) => {
+				if scope
+					.variables
+					.borrow()
+					.iter()
+					.find(|x| &x.name == &var.name)
+					.is_some()
+				{
+					return Err(TypeCheckerError::VariableAlreadyExists(var.name.clone()));
+				}
 				scope.variables.borrow_mut().push(var.clone());
 				Ok(var.ty.add_reference())
 			}

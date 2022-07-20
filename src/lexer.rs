@@ -21,7 +21,7 @@ pub enum Operator {
 	Multiply,
 	Equals,
 	NotEquals,
-	Not
+	Not,
 }
 
 #[derive(Debug, Clone, PartialEq)]

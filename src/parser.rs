@@ -19,7 +19,9 @@ impl Type {
 impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}", self.name)?;
-		if self.reference { write!(f, "&")?; }
+		if self.reference {
+			write!(f, "&")?;
+		}
 		Ok(())
 	}
 }
@@ -99,6 +101,16 @@ pub struct Scope {
 	pub variables: RefCell<Vec<Variable>>,
 }
 
+impl Scope {
+	fn new(parent: Option<Box<Scope>>) -> Scope {
+		Scope {
+			parent,
+			statements: vec![],
+			variables: vec![].into(),
+		}
+	}
+}
+
 #[derive(Debug)]
 pub struct Function {
 	pub name: String,
@@ -113,11 +125,7 @@ impl Function {
 			name,
 			arguments: vec![],
 			return_type: Type::new("unknown"),
-			scope: Box::new(Scope {
-				parent: None,
-				statements: vec![],
-				variables: vec![].into(),
-			}),
+			scope: Box::new(Scope::new(None)),
 		}
 	}
 }

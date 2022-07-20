@@ -1,18 +1,17 @@
 // SHUT UP!!!
 #![allow(dead_code)]
 
-mod lexer;
-mod parser;
 mod checker;
 mod compiler;
 mod graph;
+mod lexer;
+mod parser;
 
-use lexer::*;
-use parser::Parser;
 use checker::TypeChecker;
 use compiler::Compiler;
 use graph::GraphGen;
-
+use lexer::*;
+use parser::Parser;
 
 fn main() {
 	let contents = std::fs::read_to_string("main.tack").unwrap();
@@ -25,10 +24,10 @@ fn main() {
 
 	let checker = TypeChecker::new(&parser);
 	checker.check().unwrap();
-	
+
 	// println!("{:#?}", parser.functions);
 	std::fs::write("graph.gv", GraphGen::generate_graph(&parser).unwrap()).unwrap();
-	
+
 	let compiler = Compiler::new(parser);
 
 	println!("Compiler returned:\n{}", compiler.compile());
