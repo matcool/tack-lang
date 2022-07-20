@@ -307,6 +307,11 @@ impl Parser {
 				let var = self.parse_var_decl()?;
 				Ok(Expression::new(ExpressionKind::Declaration(var), vec![]))
 			}
+			TokenKind::LeftParen => {
+				let exp = self.parse_expression()?;
+				expect_token!(self.next()?, TokenKind::RightParen)?;
+				Ok(exp)
+			}
 			kind => {
 				todo!("expression {:?}", kind);
 			}
