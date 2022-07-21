@@ -42,13 +42,15 @@ impl Compiler {
 		self.variables.borrow_mut().clear();
 		self.var_counter.set(0);
 
-		if !function.scope.variables.borrow().is_empty() {
+		if !function.scope.variables.borrow().is_empty() || !function.arguments.is_empty() {
 			self.write("push ebp");
 			self.write("mov ebp, esp");
-			self.write(format!(
-				"sub esp, {}",
-				function.scope.variables.borrow().len() * 4
-			));
+			if !function.scope.variables.borrow().is_empty() {
+				self.write(format!(
+					"sub esp, {}",
+					function.scope.variables.borrow().len() * 4
+				));
+			}
 		}
 
 		for statement in &function.scope.statements {
@@ -59,11 +61,14 @@ impl Compiler {
 	}
 
 	fn generate_return(&self, function: &Function) {
-		if !function.scope.variables.borrow().is_empty() {
-			self.write(format!(
-				"add esp, {}",
-				function.scope.variables.borrow().len() * 4
-			));
+		let vars = function.scope.variables.borrow();
+		if !vars.is_empty() || !function.arguments.is_empty() {
+			if !vars.is_empty() {
+				self.write(format!(
+					"add esp, {}",
+					function.scope.variables.borrow().len() * 4
+				));
+			}
 			self.write("mov esp, ebp");
 			self.write("pop ebp");
 		}
@@ -107,12 +112,19 @@ impl Compiler {
 				self.var_counter.set(val + 1)
 			}
 			ExpressionKind::Variable(ref name) => {
-				let val = *self
-					.variables
-					.borrow()
-					.get(name)
-					.expect("variable not found in compiler.. how");
-				self.write(format!("lea eax, [ebp - {}]", val * 4));
+				if let Some(val) = self.variables.borrow().get(name) {
+					self.write(format!("lea eax, [ebp - {}]", val * 4));
+				} else {
+					// hopefully its a function argument, otherwise type checker haveth failed us
+					let index = function
+						.arguments
+						.iter()
+						.enumerate()
+						.find(|(_, x)| &x.name == name)
+						.expect("expected variable.. type checker went wrong somewhere").0;
+					let stack_index = function.arguments.len() - index - 1 + 2;
+					self.write(format!("lea eax, [ebp + {}]", stack_index * 4));
+				}
 			}
 			ExpressionKind::Operator(Operator::Add) => {
 				self.compile_expression(&exp.children[0], function);
@@ -132,6 +144,17 @@ impl Compiler {
 						child.value_type,
 						exp.value_type
 					);
+				}
+			}
+			ExpressionKind::Call(ref name) => {
+				for child in &exp.children {
+					self.compile_expression(child, function);
+					self.write("push eax");
+				}
+				self.write(format!("call {name}"));
+				let func = self.parser.functions.iter().find(|f| &f.name == name).expect("where the function");
+				if !func.arguments.is_empty() {
+					self.write(format!("add esp, {}", func.arguments.len() * 4));
 				}
 			}
 			ref k => {

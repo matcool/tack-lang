@@ -24,7 +24,7 @@ fn main() {
 
 	let checker = TypeChecker::new(&parser);
 	checker.check().unwrap();
-
+	
 	// println!("{:#?}", parser.functions);
 	std::fs::write("graph.gv", GraphGen::generate_graph(&parser).unwrap()).unwrap();
 

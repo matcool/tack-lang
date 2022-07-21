@@ -301,7 +301,17 @@ impl Parser {
 				vec![],
 			)),
 			TokenKind::Identifier(name) => {
-				Ok(Expression::new(ExpressionKind::Variable(name), vec![]))
+				if let TokenKind::LeftParen = self.peek()?.kind {
+					self.next()?; // LeftParen
+					let mut exp = Expression::new(ExpressionKind::Call(name.clone()), vec![]);
+					self.parse_comma_list(|selfish: &mut Self| {
+						exp.children.push(selfish.parse_expression()?);
+						Ok(())
+					})?;
+					Ok(exp)
+				} else {
+					Ok(Expression::new(ExpressionKind::Variable(name), vec![]))
+				}
 			}
 			TokenKind::Keyword(Keyword::Let) => {
 				let var = self.parse_var_decl()?;

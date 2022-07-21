@@ -1,8 +1,9 @@
+fn add(a: i32, b: i32): i32 {
+	return a + b;
+}
+
 fn main(): i32 {
-	let a: i32 = 9;
-	let b: i32 = 10;
-	let c: i32 = 0;
-	c = 1;
-	c = c;
-	return a + b + c;
+	let a: i32 = 1 + (2 + 3);
+	let result: i32 = add(3, add(10, 12));
+	return result;
 }

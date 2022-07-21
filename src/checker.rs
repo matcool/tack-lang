@@ -1,6 +1,6 @@
 use crate::{
 	lexer::Operator,
-	parser::{Expression, ExpressionKind, Function, Parser, Scope, Statement, StatementKind, Type},
+	parser::{Expression, ExpressionKind, Function, Parser, Scope, Statement, StatementKind, Type, Variable},
 };
 
 impl Type {
@@ -37,6 +37,8 @@ pub enum TypeCheckerError {
 	TypeMismatch(String),
 	VariableNotFound(String),
 	VariableAlreadyExists(String),
+	FunctionNotFound(String),
+	ArgumentCountMismatch, // great name
 }
 
 pub struct TypeChecker<'a> {
@@ -85,6 +87,19 @@ impl TypeChecker<'_> {
 			}
 		}
 		Ok(())
+	}
+
+	// TODO: maybe not copy the output? idk
+	fn find_variable(name: &String, scope: &Scope, function: &Function) -> Option<Variable> {
+		let vars = scope.variables.borrow();
+		if let Some(var) = vars.iter().find(|var| &var.name == name) {
+			return Some(var.clone());
+		}
+		if let Some(scope) = &scope.parent {
+			let var = Self::find_variable(name, scope, function);
+			if var.is_some() { return var; }
+		}
+		function.arguments.iter().find(|var| &var.name == name).map(|x| x.clone())
 	}
 
 	fn check_expression(
@@ -149,28 +164,42 @@ impl TypeChecker<'_> {
 				}
 			}
 			ExpressionKind::Declaration(var) => {
-				if scope
-					.variables
-					.borrow()
-					.iter()
-					.find(|x| &x.name == &var.name)
-					.is_some()
-				{
-					return Err(TypeCheckerError::VariableAlreadyExists(var.name.clone()));
-				}
-				scope.variables.borrow_mut().push(var.clone());
-				Ok(var.ty.add_reference())
+				// if let Some(var) = Self::find_variable(&var.name, scope, function) {
+				// 	Err(TypeCheckerError::VariableAlreadyExists(var.name.clone()))
+				// } else {
+					scope.variables.borrow_mut().push(var.clone());
+					Ok(var.ty.add_reference())
+				// }
 			}
-			ExpressionKind::Variable(name) => Ok(scope
-				.variables
-				.borrow()
-				.iter()
-				.find(|var| &var.name == name)
-				.ok_or(TypeCheckerError::VariableNotFound(name.clone()))?
-				.ty
-				.add_reference()),
+			ExpressionKind::Variable(name) => {
+				if let Some(var) = Self::find_variable(name, scope, function) {
+					Ok(var.ty.add_reference())
+				} else {
+					Err(TypeCheckerError::VariableNotFound(name.clone()))
+				}
+			}
+			ExpressionKind::Call(name) => {
+				if let Some(func) = self.parser.functions.iter().find(|f| &f.name == name) {
+					if func.arguments.len() != expression.children.len() {
+						return Err(TypeCheckerError::ArgumentCountMismatch);
+					}
+					for (arg, exp) in func.arguments.iter().zip(expression.children.iter_mut()) {
+						let ty = self.check_expression(exp, function, scope)?;
+						if ty.reference {
+							exp.replace_with_cast(ty.remove_reference());
+						}
+
+						if !ty.unref_eq(&arg.ty) {
+							return Err(TypeCheckerError::TypeMismatch("its wrong buddy".into()));
+						}
+					}
+					Ok(func.return_type.clone())
+				} else {
+					Err(TypeCheckerError::FunctionNotFound(name.clone()))
+				}
+			}
 			k => {
-				todo!("fuck {:?}", k)
+				todo!("{:?}", k)
 			}
 		}
 	}
