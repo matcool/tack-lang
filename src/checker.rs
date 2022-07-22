@@ -1,3 +1,5 @@
+use std::{rc::Rc, borrow::BorrowMut};
+
 use crate::{
 	lexer::Operator,
 	parser::{Expression, ExpressionKind, Function, Parser, Scope, Statement, StatementKind, Type, Variable},
@@ -58,8 +60,12 @@ impl TypeChecker<'_> {
 	}
 
 	fn check_function(&self, function: &Function) -> Result<(), TypeCheckerError> {
-		for statement in &function.scope.statements {
-			self.check_statement(&mut statement.borrow_mut(), function, &function.scope)?;
+		self.check_scope(Rc::clone(&function.scope), function)
+	}
+
+	fn check_scope(&self, scope: Rc<Scope>, function: &Function) -> Result<(), TypeCheckerError> {
+		for statement in &scope.statements {
+			self.check_statement(&mut statement.borrow_mut(), function, Rc::clone(&scope))?;
 		}
 		Ok(())
 	}
@@ -68,7 +74,7 @@ impl TypeChecker<'_> {
 		&self,
 		statement: &mut Statement,
 		function: &Function,
-		scope: &Scope,
+		scope: Rc<Scope>,
 	) -> Result<(), TypeCheckerError> {
 		match statement.kind {
 			StatementKind::Return => {
@@ -85,20 +91,51 @@ impl TypeChecker<'_> {
 			StatementKind::Expression => {
 				self.check_expression(&mut statement.children[0], function, scope)?;
 			}
+			StatementKind::While(ref mut inner_scope) => {
+				// parent should be None since parser doesnt set it
+				Rc::get_mut(inner_scope).unwrap().parent = Some(Rc::clone(&scope));
+
+				let ty = self.check_expression(&mut statement.children[0], function, scope)?;
+				if !ty.unref_eq(&Type::new("bool")) {
+					return Err(TypeCheckerError::TypeMismatch(format!("expected bool, got {}", ty)));
+				}
+				self.check_scope(Rc::clone(inner_scope), function)?;
+			}
+			StatementKind::If(ref mut inner_scope) => {
+				Rc::get_mut(inner_scope).unwrap().parent = Some(Rc::clone(&scope));
+
+				let ty = self.check_expression(&mut statement.children[0], function, Rc::clone(&scope))?;
+				if !ty.unref_eq(&Type::new("bool")) {
+					return Err(TypeCheckerError::TypeMismatch(format!("expected bool, got {}", ty)));
+				}
+				self.check_scope(Rc::clone(inner_scope), function)?;
+				if let Some(else_branch) = &mut statement.else_branch {
+					self.check_statement(else_branch.borrow_mut(), function, Rc::clone(&scope))?;
+				}
+			}
+			StatementKind::Block(ref mut inner_scope) => {
+				Rc::get_mut(inner_scope).unwrap().parent = Some(Rc::clone(&scope));
+
+				self.check_scope(Rc::clone(inner_scope), function)?;
+			}
+			ref k => {
+				todo!("{:?}", k);
+			}
 		}
 		Ok(())
 	}
 
 	// TODO: maybe not copy the output? idk
-	fn find_variable(name: &String, scope: &Scope, function: &Function) -> Option<Variable> {
+	fn find_variable(name: &String, scope: Rc<Scope>, function: &Function) -> Option<Variable> {
 		let vars = scope.variables.borrow();
 		if let Some(var) = vars.iter().find(|var| &var.name == name) {
 			return Some(var.clone());
 		}
-		if let Some(scope) = &scope.parent {
-			let var = Self::find_variable(name, scope, function);
+		if let Some(parent) = &scope.parent {
+			let var = Self::find_variable(name, Rc::clone(parent), function);
 			if var.is_some() { return var; }
 		}
+		// TODO: have functions args be its own scope? maybe
 		function.arguments.iter().find(|var| &var.name == name).map(|x| x.clone())
 	}
 
@@ -106,7 +143,7 @@ impl TypeChecker<'_> {
 		&self,
 		expression: &mut Expression,
 		function: &Function,
-		scope: &Scope,
+		scope: Rc<Scope>,
 	) -> Result<Type, TypeCheckerError> {
 		expression.value_type = self.check_expression_inner(expression, function, scope)?;
 		// TODO: return a borrow?
@@ -119,7 +156,7 @@ impl TypeChecker<'_> {
 		&self,
 		expression: &mut Expression,
 		function: &Function,
-		scope: &Scope,
+		scope: Rc<Scope>,
 	) -> Result<Type, TypeCheckerError> {
 		match &expression.kind {
 			ExpressionKind::NumberLiteral(_) => Ok(Type::new("i32")),
@@ -128,7 +165,7 @@ impl TypeChecker<'_> {
 				let lhs;
 				let rhs;
 				if op == &Operator::Assign {
-					rhs = self.check_expression(&mut expression.children[1], function, scope)?;
+					rhs = self.check_expression(&mut expression.children[1], function, Rc::clone(&scope))?;
 					lhs = self.check_expression(&mut expression.children[0], function, scope)?;
 
 					if !lhs.reference {
@@ -137,7 +174,7 @@ impl TypeChecker<'_> {
 						));
 					}
 				} else {
-					lhs = self.check_expression(&mut expression.children[0], function, scope)?;
+					lhs = self.check_expression(&mut expression.children[0], function, Rc::clone(&scope))?;
 					rhs = self.check_expression(&mut expression.children[1], function, scope)?;
 				}
 
@@ -184,7 +221,7 @@ impl TypeChecker<'_> {
 						return Err(TypeCheckerError::ArgumentCountMismatch);
 					}
 					for (arg, exp) in func.arguments.iter().zip(expression.children.iter_mut()) {
-						let ty = self.check_expression(exp, function, scope)?;
+						let ty = self.check_expression(exp, function, Rc::clone(&scope))?;
 						if ty.reference {
 							exp.replace_with_cast(ty.remove_reference());
 						}

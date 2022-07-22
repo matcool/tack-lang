@@ -1,11 +1,11 @@
 use std::{
 	cell::{Cell, RefCell},
-	collections::HashMap,
+	collections::HashMap, rc::Rc,
 };
 
 use crate::{
 	lexer::Operator,
-	parser::{Expression, ExpressionKind, Function, Parser, Statement, StatementKind},
+	parser::{Expression, ExpressionKind, Function, Parser, Statement, StatementKind, Scope},
 };
 
 pub struct Compiler {
@@ -13,6 +13,7 @@ pub struct Compiler {
 	code: RefCell<String>,
 	variables: RefCell<HashMap<String, i32>>,
 	var_counter: Cell<i32>,
+	label_counter: Cell<i32>,
 }
 
 impl Compiler {
@@ -22,6 +23,7 @@ impl Compiler {
 			code: String::from("").into(),
 			variables: HashMap::new().into(),
 			var_counter: 0.into(),
+			label_counter: 0.into(),
 		}
 	}
 
@@ -53,9 +55,7 @@ impl Compiler {
 			}
 		}
 
-		for statement in &function.scope.statements {
-			self.compile_statement(&statement.borrow(), function);
-		}
+		self.compile_scope(Rc::clone(&function.scope), function);
 
 		self.generate_return(function);
 	}
@@ -75,6 +75,18 @@ impl Compiler {
 		self.write("ret");
 	}
 
+	fn get_label_id(&self) -> i32 {
+		let id = self.label_counter.get();
+		self.label_counter.set(id + 1);
+		id
+	}
+
+	fn compile_scope(&self, scope: Rc<Scope>, function: &Function) {
+		for statement in &scope.statements {
+			self.compile_statement(&statement.borrow(), function);
+		}
+	}
+
 	fn compile_statement(&self, statement: &Statement, function: &Function) {
 		match statement.kind {
 			StatementKind::Return => {
@@ -85,6 +97,39 @@ impl Compiler {
 			}
 			StatementKind::Expression => {
 				self.compile_expression(&statement.children[0], function);
+			}
+			StatementKind::While(ref scope) => {
+				let while_start = format!("_{}", self.get_label_id());
+				let while_end = format!("_{}", self.get_label_id());
+				self.write(format!("{while_start}:"));
+				// condition
+				self.compile_expression(&statement.children[0], function);
+				self.write("cmp al, 1");
+				self.write(format!("jne {while_end}"));
+				self.compile_scope(Rc::clone(scope), function);
+				self.write(format!("jmp {while_start}"));
+				self.write(format!("{while_end}:"));
+			}
+			StatementKind::If(ref scope) => {
+				let if_else = format!("_{}", self.get_label_id());
+				let if_end = format!("_{}", self.get_label_id());
+				// condition
+				self.compile_expression(&statement.children[0], function);
+				self.write("cmp al, 1");
+				self.write(format!("jne {if_else}"));
+				self.compile_scope(Rc::clone(scope), function);
+				self.write(format!("jmp {if_end}"));
+				self.write(format!("{if_else}:"));
+				if let Some(else_branch) = &statement.else_branch {
+					self.compile_statement(else_branch, function);
+				}
+				self.write(format!("{if_end}:"));
+			}
+			StatementKind::Block(ref scope) => {
+				self.compile_scope(Rc::clone(scope), function);
+			}
+			ref k => {
+				todo!("{:?}", k);
 			}
 		}
 	}
@@ -126,12 +171,23 @@ impl Compiler {
 					self.write(format!("lea eax, [ebp + {}]", stack_index * 4));
 				}
 			}
-			ExpressionKind::Operator(Operator::Add) => {
+			ExpressionKind::Operator(op) if op.is_binary() => {
 				self.compile_expression(&exp.children[0], function);
 				self.write("push eax");
 				self.compile_expression(&exp.children[1], function);
 				self.write("pop ecx");
-				self.write("add eax, ecx");
+				match op {
+					Operator::Add => self.write("add eax, ecx"),
+					Operator::Equals | Operator::NotEquals => {
+						self.write("cmp eax, ecx");
+						if op == Operator::Equals {
+							self.write("sete al");
+						} else {
+							self.write("setne al");
+						}
+					}
+					_ => todo!("unhandled {:?}", op)
+				}
 			}
 			ExpressionKind::Cast => {
 				let child = &exp.children[0];

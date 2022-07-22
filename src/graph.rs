@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use crate::parser::{Expression, ExpressionKind, Parser, Scope, Statement};
+use crate::parser::{Expression, ExpressionKind, Parser, Scope, Statement, StatementKind};
 
 pub struct GraphGen {
 	out: String,
@@ -40,21 +40,38 @@ impl GraphGen {
 	fn generate_scope(&mut self, scope: &Scope, parent_id: i32) -> Result<(), std::fmt::Error> {
 		for stmt in &scope.statements {
 			let id = self.generate_statement(&stmt.borrow())?;
-			writeln!(&mut self.out, "node{} -> node{}", parent_id, id)?;
+			// TODO: change arrow shape for parent -> statement connections
+			writeln!(&mut self.out, "node{} -> node{} [color=red]", parent_id, id)?;
 		}
 		Ok(())
 	}
 
 	fn generate_statement(&mut self, stmt: &Statement) -> Result<i32, std::fmt::Error> {
 		let id = self.next_id();
+		let name = {
+			let x = format!("{:?}", stmt.kind);
+			// incredible
+			x.split_once('(').map_or(x.clone(), |(x, _)| x.to_string())
+		};
+		
 		writeln!(
 			&mut self.out,
-			"node{} [color=coral3 label=\"{:?}\"]",
-			id, stmt.kind
+			"node{} [color=coral3 label=\"{}\"]",
+			id, name
 		)?;
 		for exp in &stmt.children {
 			let child_id = self.generate_expression(exp)?;
 			writeln!(&mut self.out, "node{} -> node{}", id, child_id)?;
+		}
+		match &stmt.kind {
+			StatementKind::While(ref scope) | StatementKind::If(ref scope) | StatementKind::Block(ref scope) => {
+				self.generate_scope(scope, id)?;
+			}
+			_ => {}
+		}
+		if let Some(else_branch) = &stmt.else_branch {
+			let child_id = self.generate_statement(else_branch)?;
+			writeln!(&mut self.out, "node{} -> node{} [label=\"else\" color=red]", id, child_id)?;
 		}
 		Ok(id)
 	}

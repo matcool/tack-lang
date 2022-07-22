@@ -1,5 +1,5 @@
 use crate::lexer::{Keyword, Operator, Token, TokenKind};
-use std::cell::RefCell;
+use std::{cell::RefCell, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Type {
@@ -80,29 +80,46 @@ impl Expression {
 pub enum StatementKind {
 	Expression,
 	Return,
+	If(Rc<Scope>),
+	While(Rc<Scope>),
+	Block(Rc<Scope>),
 }
 
 #[derive(Debug)]
 pub struct Statement {
 	pub kind: StatementKind,
 	pub children: Vec<Expression>,
+	pub else_branch: Option<Box<Statement>>
 }
 
 impl Statement {
 	fn new(kind: StatementKind, children: Vec<Expression>) -> Statement {
-		Statement { kind, children }
+		Statement { kind, children, else_branch: None }
+	}
+
+	fn requires_semicolon(&self) -> bool {
+		!matches!(&self.kind, StatementKind::If(_) | StatementKind::While(_))
 	}
 }
 
-#[derive(Debug)]
 pub struct Scope {
-	pub parent: Option<Box<Scope>>,
+	pub parent: Option<Rc<Scope>>,
 	pub statements: Vec<RefCell<Statement>>,
 	pub variables: RefCell<Vec<Variable>>,
 }
 
+impl std::fmt::Debug for Scope {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Scope")
+			.field("parent", self.parent.as_ref().map_or(&"None", |_| &"Some(...)"))
+			.field("statements", &self.statements)
+			.field("variables", &self.variables)
+			.finish()
+	}
+}
+
 impl Scope {
-	fn new(parent: Option<Box<Scope>>) -> Scope {
+	fn new(parent: Option<Rc<Scope>>) -> Scope {
 		Scope {
 			parent,
 			statements: vec![],
@@ -116,7 +133,7 @@ pub struct Function {
 	pub name: String,
 	pub arguments: Vec<Variable>,
 	pub return_type: Type,
-	pub scope: Box<Scope>,
+	pub scope: Rc<Scope>,
 }
 
 impl Function {
@@ -125,7 +142,7 @@ impl Function {
 			name,
 			arguments: vec![],
 			return_type: Type::new("unknown"),
-			scope: Box::new(Scope::new(None)),
+			scope: Rc::new(Scope::new(None)),
 		}
 	}
 }
@@ -212,7 +229,13 @@ impl Parser {
 						}
 					}
 
-					self.parse_block(&mut function.scope.statements)?;
+					{
+						// Rc::get_mut(this)
+						// let stmts = Rc::clone(&function.scope).statements;
+						// let stmts: &mut Vec<RefCell<Statement>> = &mut function.scope.statements;
+					}
+
+					self.parse_block(&mut Rc::get_mut(&mut function.scope).unwrap().statements)?;
 
 					self.functions.push(function);
 				}
@@ -253,11 +276,21 @@ impl Parser {
 	fn parse_block(&mut self, statements: &mut Vec<RefCell<Statement>>) -> Result<(), ParserError> {
 		expect_token!(self.next()?, TokenKind::LeftBracket)?;
 		while !matches!(self.peek()?.kind, TokenKind::RightBracket) {
-			statements.push(self.parse_statement()?.into());
-			expect_token!(self.next()?, TokenKind::Semicolon)?;
+			let stmt = self.parse_statement()?;
+			let semi = stmt.requires_semicolon();
+			statements.push(stmt.into());
+			if semi {
+				expect_token!(self.next()?, TokenKind::Semicolon)?;
+			}
 		}
 		self.next()?; // RightBracket
 		Ok(())
+	}
+
+	fn parse_scope(&mut self, parent: Option<Rc<Scope>>) -> Result<Scope, ParserError> {
+		let mut scope = Scope::new(parent);
+		self.parse_block(&mut scope.statements)?;
+		Ok(scope)
 	}
 
 	fn parse_var_decl(&mut self) -> Result<Variable, ParserError> {
@@ -281,6 +314,39 @@ impl Parser {
 					StatementKind::Return,
 					vec![self.parse_expression()?],
 				))
+			}
+			TokenKind::Keyword(Keyword::While) => {
+				self.next()?; // While
+				let condition = self.parse_expression()?;
+				let scope = self.parse_scope(None)?;
+				Ok(Statement::new(
+					StatementKind::While(Rc::new(scope)),
+					vec![condition],
+				))
+			}
+			TokenKind::Keyword(Keyword::If) => {
+				self.next()?; // If
+				let condition = self.parse_expression()?;
+				let scope = self.parse_scope(None)?;
+				let mut stmt = Statement::new(
+					StatementKind::If(Rc::new(scope)),
+					vec![condition],
+				);
+				if matches!(self.peek()?.kind, TokenKind::Keyword(Keyword::Else)) {
+					self.next()?; // Else
+					match self.peek()?.kind {
+						TokenKind::LeftBracket | TokenKind::Keyword(Keyword::If) => {
+							stmt.else_branch = Some(Box::new(self.parse_statement()?));
+						}
+						_ => {
+							return Err(ParserError::InvalidToken(self.next()?));
+						}
+					}
+				}
+				Ok(stmt)
+			}
+			TokenKind::LeftBracket => {
+				Ok(Statement::new(StatementKind::Block(Rc::new(self.parse_scope(None)?)), vec![]))
 			}
 			_ => Ok(Statement::new(
 				StatementKind::Expression,
