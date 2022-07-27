@@ -21,7 +21,13 @@ pub enum Operator {
 	Multiply,
 	Equals,
 	NotEquals,
+	And,
+	BitAnd,
+	// unary ops
 	Not,
+	Negate,
+	Dereference,
+	Reference,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -108,8 +114,16 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 						TokenKind::Operator(Operator::Not)
 					}
 				}
+				'&' => {
+					if self.peek()? == '&' {
+						self.next()?;
+						TokenKind::Operator(Operator::And)
+					} else {
+						TokenKind::Operator(Operator::BitAnd)
+					}
+				}
 				'/' => {
-					if *self.iterator.peek()? == '/' {
+					if self.peek()? == '/' {
 						(&mut self.iterator)
 							.take_while(|c| *c != '\n')
 							.for_each(drop);

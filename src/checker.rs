@@ -7,7 +7,7 @@ use crate::{
 
 impl Type {
 	fn unref_eq(&self, other: &Type) -> bool {
-		self.name == other.name
+		self.name == other.name && self.pointer == other.pointer
 	}
 
 	fn add_reference(&self) -> Self {
@@ -41,6 +41,8 @@ pub enum TypeCheckerError {
 	VariableAlreadyExists(String),
 	FunctionNotFound(String),
 	ArgumentCountMismatch, // great name
+	InvalidReference,
+	InvalidDereference,
 }
 
 pub struct TypeChecker<'a> {
@@ -200,13 +202,22 @@ impl TypeChecker<'_> {
 					_ => Ok(lhs.remove_reference()),
 				}
 			}
+			ExpressionKind::Operator(Operator::Negate) => {
+				let ty = self.check_expression(&mut expression.children[0], function, Rc::clone(&scope))?;
+
+				if !ty.unref_eq(&Type::new("i32")) {
+					return Err(TypeCheckerError::TypeMismatch(format!("negation only works on i32, got {}", ty)));
+				}
+
+				if ty.reference {
+					expression.children[0].replace_with_cast(ty.remove_reference());
+				}
+
+				Ok(ty.remove_reference())
+			}
 			ExpressionKind::Declaration(var) => {
-				// if let Some(var) = Self::find_variable(&var.name, scope, function) {
-				// 	Err(TypeCheckerError::VariableAlreadyExists(var.name.clone()))
-				// } else {
-					scope.variables.borrow_mut().push(var.clone());
-					Ok(var.ty.add_reference())
-				// }
+				scope.variables.borrow_mut().push(var.clone());
+				Ok(var.ty.add_reference())
 			}
 			ExpressionKind::Variable(name) => {
 				if let Some(var) = Self::find_variable(name, scope, function) {
@@ -233,6 +244,26 @@ impl TypeChecker<'_> {
 					Ok(func.return_type.clone())
 				} else {
 					Err(TypeCheckerError::FunctionNotFound(name.clone()))
+				}
+			}
+			ExpressionKind::Operator(Operator::Reference) => {
+				let mut ty = self.check_expression(&mut expression.children[0], function, scope)?;
+				if !ty.reference {
+					Err(TypeCheckerError::InvalidReference)
+				} else {
+					ty.pointer = true;
+					ty.reference = false;
+					Ok(ty)
+				}
+			}
+			ExpressionKind::Operator(Operator::Dereference) => {
+				let mut ty = self.check_expression(&mut expression.children[0], function, scope)?;
+				if !ty.pointer {
+					Err(TypeCheckerError::InvalidDereference)
+				} else {
+					ty.pointer = false;
+					ty.reference = true;
+					Ok(ty)
 				}
 			}
 			k => {

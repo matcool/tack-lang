@@ -1,0 +1,6 @@
+fn main(): i32 {
+	let a: i32 = 12;
+	let b: i32* = &a;
+	*b = 21;
+	return a;
+}

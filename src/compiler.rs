@@ -213,6 +213,14 @@ impl Compiler {
 					self.write(format!("add esp, {}", func.arguments.len() * 4));
 				}
 			}
+			ExpressionKind::Operator(Operator::Reference) => {
+				self.compile_expression(&exp.children[0], function);
+				// eax should already be a pointer
+			}
+			ExpressionKind::Operator(Operator::Dereference) => {
+				self.compile_expression(&exp.children[0], function);
+				self.write("mov eax, [eax]");
+			}
 			ref k => {
 				todo!("expression {:?}", k);
 			}

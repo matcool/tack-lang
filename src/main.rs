@@ -1,6 +1,3 @@
-// SHUT UP!!!
-#![allow(dead_code)]
-
 mod checker;
 mod compiler;
 mod graph;
@@ -66,9 +63,8 @@ fn run<S: AsRef<std::path::Path>>(input: S, output_path: Option<String>, graph_f
 	let mut parser = Parser::new(tokens.into_iter().peekable());
 	parser.parse().unwrap();
 
-	let checker = TypeChecker::new(&parser);
-	checker.check().unwrap();
-
+	TypeChecker::new(&parser).check().unwrap();
+	
 	// println!("{:#?}", parser.functions);
 	if let Some(path) = graph_file {
 		std::fs::write(path, GraphGen::generate_graph(&parser).unwrap()).unwrap();

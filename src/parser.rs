@@ -5,6 +5,7 @@ use std::{cell::RefCell, rc::Rc};
 pub struct Type {
 	pub name: String,
 	pub reference: bool,
+	pub pointer: bool,
 }
 
 impl Type {
@@ -12,6 +13,7 @@ impl Type {
 		Type {
 			name: name.to_string(),
 			reference: false,
+			pointer: false,
 		}
 	}
 }
@@ -19,6 +21,9 @@ impl Type {
 impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}", self.name)?;
+		if self.pointer {
+			write!(f, "*")?;
+		}
 		if self.reference {
 			write!(f, "&")?;
 		}
@@ -44,7 +49,13 @@ impl Operator {
 		}
 	}
 	pub fn is_binary(&self) -> bool {
-		!matches!(self, Operator::Not)
+		match self {
+			Operator::Not => false,
+			Operator::Negate => false,
+			Operator::Dereference => false,
+			Operator::Reference => false,
+			_ => true
+		}
 	}
 }
 
@@ -229,12 +240,6 @@ impl Parser {
 						}
 					}
 
-					{
-						// Rc::get_mut(this)
-						// let stmts = Rc::clone(&function.scope).statements;
-						// let stmts: &mut Vec<RefCell<Statement>> = &mut function.scope.statements;
-					}
-
 					self.parse_block(&mut Rc::get_mut(&mut function.scope).unwrap().statements)?;
 
 					self.functions.push(function);
@@ -302,7 +307,12 @@ impl Parser {
 
 	fn parse_type(&mut self) -> Result<Type, ParserError> {
 		let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
-		Ok(Type::new(name))
+		let mut ty = Type::new(name);
+		if self.peek()?.kind == TokenKind::Operator(Operator::Multiply) {
+			self.next()?; // *
+			ty.pointer = true;
+		}
+		Ok(ty)
 	}
 
 	fn parse_statement(&mut self) -> Result<Statement, ParserError> {
@@ -387,6 +397,16 @@ impl Parser {
 				let exp = self.parse_expression()?;
 				expect_token!(self.next()?, TokenKind::RightParen)?;
 				Ok(exp)
+			}
+			TokenKind::Operator(op @ (Operator::Sub | Operator::Not | Operator::Multiply | Operator::BitAnd)) => {
+				let child = self.parse_expression_primary()?;
+				let op = match op {
+					Operator::Sub => Operator::Negate,
+					Operator::Multiply => Operator::Dereference,
+					Operator::BitAnd => Operator::Reference,
+					op => op
+				};
+				Ok(Expression::new(ExpressionKind::Operator(op), vec![child]))
 			}
 			kind => {
 				todo!("expression {:?}", kind);
