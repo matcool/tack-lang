@@ -1,0 +1,6 @@
+fn main(): i32 {
+	let a: bool = true;
+	let b: bool = false;
+	a = b;
+	return 0;
+}

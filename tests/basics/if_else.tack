@@ -2,12 +2,10 @@ fn main(): i32 {
 	let a: i32 = 0;
 	let b: i32 = 0;
 	
-	while a != 69 {
-		a = a + 1;
-	}
-
 	if a == 1 {
 		b = 1;
+	} else {
+		b = 2;
 	}
 
 	if b == 1 {
