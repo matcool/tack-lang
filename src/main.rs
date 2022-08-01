@@ -11,6 +11,7 @@ use compiler::Compiler;
 use graph::GraphGen;
 use lexer::*;
 use parser::Parser;
+#[cfg(test)]
 use path_slash::PathBufExt;
 
 fn print_help_and_exit() -> ! {
@@ -29,25 +30,21 @@ Usage: tack input [opts]
 }
 
 fn main() {
-	let input = match std::env::args().skip(1).next() {
+	let input = match std::env::args().nth(1) {
 		Some(value) => value,
 		_ => print_help_and_exit(),
 	};
 	let mut output = None;
 	let mut build = false;
 	let mut iter = std::env::args().skip(2);
-	loop {
-		if let Some(arg) = iter.next() {
-			if arg == "-o" {
-				output = iter.next();
-			} else if arg == "-b" || arg == "--build" {
-				build = true;
-			} else {
-				println!("Unknown option \"{}\"", arg);
-				print_help_and_exit();
-			}
+	while let Some(arg) = iter.next() {
+		if arg == "-o" {
+			output = iter.next();
+		} else if arg == "-b" || arg == "--build" {
+			build = true;
 		} else {
-			break;
+			println!("Unknown option \"{}\"", arg);
+			print_help_and_exit();
 		}
 	}
 

@@ -19,7 +19,7 @@ pub struct Compiler {
 impl Compiler {
 	pub fn new(parser: Parser) -> Compiler {
 		Compiler {
-			parser: parser.into(),
+			parser: parser,
 			code: String::from("").into(),
 			variables: HashMap::new().into(),
 			var_counter: 0.into(),
@@ -34,7 +34,7 @@ impl Compiler {
 
 	pub fn compile(&self) -> String {
 		for function in &self.parser.functions {
-			self.compile_function(function);
+			self.compile_function(&function.borrow());
 		}
 		self.code.borrow().clone()
 	}
@@ -196,7 +196,7 @@ impl Compiler {
 					self.write("mov eax, [eax]");
 				} else {
 					todo!(
-						"unhandled cast from {} to {}",
+						"unhandled cast from {:?} to {:?}",
 						child.value_type,
 						exp.value_type
 					);
@@ -208,7 +208,8 @@ impl Compiler {
 					self.write("push eax");
 				}
 				self.write(format!("call {name}"));
-				let func = self.parser.functions.iter().find(|f| &f.name == name).expect("where the function");
+				let func = self.parser.functions.iter().find(|f| &f.borrow().name == name).expect("where the function");
+				let func = func.borrow();
 				if !func.arguments.is_empty() {
 					self.write(format!("add esp, {}", func.arguments.len() * 4));
 				}

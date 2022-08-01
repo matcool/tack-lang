@@ -1,40 +1,39 @@
 use crate::lexer::{Keyword, Operator, Token, TokenKind};
 use std::{cell::RefCell, rc::Rc};
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Type {
-	pub name: String,
+#[derive(Debug, PartialEq)]
+pub enum BuiltInType {
+	I32,
+	Bool,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Type {
+	BuiltIn(BuiltInType),
+	Pointer(TypeRef),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeRef {
+	pub id: usize,
 	pub reference: bool,
-	pub pointer: bool,
 }
 
-impl Type {
-	pub fn new<I: ToString>(name: I) -> Type {
-		Type {
-			name: name.to_string(),
-			reference: false,
-			pointer: false,
-		}
+impl TypeRef {
+	pub fn new(id: usize) -> Self {
+		Self { id, reference: false }
 	}
-}
-
-impl std::fmt::Display for Type {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.name)?;
-		if self.pointer {
-			write!(f, "*")?;
-		}
-		if self.reference {
-			write!(f, "&")?;
-		}
-		Ok(())
+	
+	pub fn unknown() -> Self {
+		Self::new(usize::MAX)
 	}
 }
 
 #[derive(Debug, Clone)]
-pub struct Variable {
-	pub name: String,
-	pub ty: Type,
+pub enum ParsedType {
+	Name(String),
+	Pointer(Box<ParsedType>),
+	Unknown, // used as a default value, shouldnt be used anywhere
 }
 
 impl Operator {
@@ -59,10 +58,23 @@ impl Operator {
 	}
 }
 
+#[derive(Debug, Clone)]
+pub struct Variable {
+	pub name: String,
+	pub ty: TypeRef,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedVariable {
+	pub name: String,
+	pub ty: ParsedType,
+}
+
 #[derive(Debug)]
 pub enum ExpressionKind {
 	NumberLiteral(i32),
 	BoolLiteral(bool),
+	ParsedDeclaration(ParsedVariable),
 	Declaration(Variable),
 	Variable(String),
 	Operator(Operator),
@@ -74,7 +86,7 @@ pub enum ExpressionKind {
 pub struct Expression {
 	pub kind: ExpressionKind,
 	pub children: Vec<Expression>,
-	pub value_type: Type,
+	pub value_type: TypeRef,
 }
 
 impl Expression {
@@ -82,7 +94,7 @@ impl Expression {
 		Expression {
 			kind,
 			children,
-			value_type: Type::new("unknown"),
+			value_type: TypeRef::unknown(),
 		}
 	}
 }
@@ -142,8 +154,10 @@ impl Scope {
 #[derive(Debug)]
 pub struct Function {
 	pub name: String,
+	pub parsed_arguments: Vec<ParsedVariable>,
+	pub parsed_return_type: ParsedType,
 	pub arguments: Vec<Variable>,
-	pub return_type: Type,
+	pub return_type: TypeRef,
 	pub scope: Rc<Scope>,
 }
 
@@ -151,8 +165,10 @@ impl Function {
 	fn new(name: String) -> Function {
 		Function {
 			name,
+			parsed_arguments: vec![],
+			parsed_return_type: ParsedType::Unknown,
 			arguments: vec![],
-			return_type: Type::new("unknown"),
+			return_type: TypeRef::unknown(),
 			scope: Rc::new(Scope::new(None)),
 		}
 	}
@@ -160,8 +176,8 @@ impl Function {
 
 pub struct Parser {
 	tokens: std::iter::Peekable<std::vec::IntoIter<Token>>,
-	// index: usize,
-	pub functions: Vec<Function>,
+	pub functions: Vec<RefCell<Function>>,
+	pub types: RefCell<Vec<Type>>,
 }
 
 #[derive(Debug)]
@@ -192,6 +208,7 @@ impl Parser {
 		Parser {
 			tokens,
 			functions: vec![],
+			types: vec![].into(),
 		}
 	}
 
@@ -222,7 +239,7 @@ impl Parser {
 
 					expect_token!(self.next()?, TokenKind::LeftParen)?;
 					self.parse_comma_list(|selfish: &mut Self| {
-						function.arguments.push(selfish.parse_var_decl()?);
+						function.parsed_arguments.push(selfish.parse_var_decl()?);
 						Ok(())
 					})?;
 
@@ -230,10 +247,10 @@ impl Parser {
 					match next.kind {
 						TokenKind::TypeIndicator => {
 							self.next()?;
-							function.return_type = self.parse_type()?;
+							function.parsed_return_type = self.parse_type()?;
 						}
 						TokenKind::LeftBracket => {
-							function.return_type = Type::new("void");
+							function.parsed_return_type = ParsedType::Name("void".to_string());
 						}
 						_ => {
 							return Err(ParserError::InvalidToken(self.next()?));
@@ -242,7 +259,11 @@ impl Parser {
 
 					self.parse_block(&mut Rc::get_mut(&mut function.scope).unwrap().statements)?;
 
-					self.functions.push(function);
+					self.functions.push(function.into());
+				}
+				TokenKind::Keyword(Keyword::Struct) => {
+					let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
+
 				}
 				_ => {
 					return Err(ParserError::InvalidToken(token));
@@ -298,19 +319,20 @@ impl Parser {
 		Ok(scope)
 	}
 
-	fn parse_var_decl(&mut self) -> Result<Variable, ParserError> {
+	fn parse_var_decl(&mut self) -> Result<ParsedVariable, ParserError> {
 		let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
 		expect_token!(self.next()?, TokenKind::TypeIndicator)?;
 		let ty = self.parse_type()?;
-		Ok(Variable { name, ty })
+		Ok(ParsedVariable { name, ty })
 	}
 
-	fn parse_type(&mut self) -> Result<Type, ParserError> {
+	fn parse_type(&mut self) -> Result<ParsedType, ParserError> {
 		let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
-		let mut ty = Type::new(name);
+		let ty = ParsedType::Name(name);
 		if self.peek()?.kind == TokenKind::Operator(Operator::Multiply) {
 			self.next()?; // *
-			ty.pointer = true;
+			// TODO: multiple layers of pointers
+			return Ok(ParsedType::Pointer(Box::new(ty)));
 		}
 		Ok(ty)
 	}
@@ -379,7 +401,7 @@ impl Parser {
 			TokenKind::Identifier(name) => {
 				if let TokenKind::LeftParen = self.peek()?.kind {
 					self.next()?; // LeftParen
-					let mut exp = Expression::new(ExpressionKind::Call(name.clone()), vec![]);
+					let mut exp = Expression::new(ExpressionKind::Call(name), vec![]);
 					self.parse_comma_list(|selfish: &mut Self| {
 						exp.children.push(selfish.parse_expression()?);
 						Ok(())
@@ -391,7 +413,7 @@ impl Parser {
 			}
 			TokenKind::Keyword(Keyword::Let) => {
 				let var = self.parse_var_decl()?;
-				Ok(Expression::new(ExpressionKind::Declaration(var), vec![]))
+				Ok(Expression::new(ExpressionKind::ParsedDeclaration(var), vec![]))
 			}
 			TokenKind::LeftParen => {
 				let exp = self.parse_expression()?;

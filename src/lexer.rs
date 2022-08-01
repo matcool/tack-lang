@@ -10,6 +10,7 @@ pub enum Keyword {
 	While,
 	True,
 	False,
+	Struct,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -159,6 +160,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 						"if" => TokenKind::Keyword(Keyword::If),
 						"else" => TokenKind::Keyword(Keyword::Else),
 						"while" => TokenKind::Keyword(Keyword::While),
+						"struct" => TokenKind::Keyword(Keyword::Struct),
 						_ => TokenKind::Identifier(identifer),
 					}
 				}
