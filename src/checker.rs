@@ -98,6 +98,9 @@ pub enum TypeCheckerError {
 	UnknownType(String),
 }
 
+const BUILTIN_TYPE_I32: TypeRef = TypeRef::new(0);
+const BUILTIN_TYPE_BOOL: TypeRef = TypeRef::new(1);
+
 pub struct TypeChecker<'a> {
 	parser: &'a Parser,
 }
@@ -108,7 +111,6 @@ impl TypeChecker<'_> {
 	}
 
 	pub fn check(&self) -> Result<(), TypeCheckerError> {
-		// TODO: save the indexes of these, or have them hardcoded since they should always be first
 		self.parser.add_type(Type::BuiltIn(BuiltInType::I32));
 		self.parser.add_type(Type::BuiltIn(BuiltInType::Bool));
 
@@ -170,7 +172,7 @@ impl TypeChecker<'_> {
 				Rc::get_mut(inner_scope).unwrap().parent = Some(Rc::clone(&scope));
 
 				let ty = self.check_expression(&mut statement.children[0], function, scope)?;
-				if ty != self.parser.find_type_or_add(Type::BuiltIn(BuiltInType::Bool)) {
+				if ty != BUILTIN_TYPE_BOOL {
 					return Err(TypeCheckerError::TypeMismatch(format!(
 						"expected bool, got {:?}",
 						ty
@@ -183,7 +185,7 @@ impl TypeChecker<'_> {
 
 				let ty =
 					self.check_expression(&mut statement.children[0], function, Rc::clone(&scope))?;
-				if ty != self.parser.find_type_or_add(Type::BuiltIn(BuiltInType::Bool)) {
+				if ty != BUILTIN_TYPE_BOOL {
 					return Err(TypeCheckerError::TypeMismatch(format!(
 						"expected bool, got {:?}",
 						ty
@@ -233,9 +235,6 @@ impl TypeChecker<'_> {
 		scope: Rc<Scope>,
 	) -> Result<TypeRef, TypeCheckerError> {
 		expression.value_type = self.check_expression_inner(expression, function, scope)?;
-		// TODO: return a borrow?
-		// or maybe have some global list of types..
-		// wouldnt want to be copying struct types everywhere
 		Ok(expression.value_type.clone())
 	}
 
@@ -246,9 +245,8 @@ impl TypeChecker<'_> {
 		scope: Rc<Scope>,
 	) -> Result<TypeRef, TypeCheckerError> {
 		match &expression.kind {
-			// TODO: builtin constants
-			ExpressionKind::NumberLiteral(_) => Ok(self.parser.find_type_or_add(Type::BuiltIn(BuiltInType::I32))),
-			ExpressionKind::BoolLiteral(_) => Ok(self.parser.find_type_or_add(Type::BuiltIn(BuiltInType::Bool))),
+			ExpressionKind::NumberLiteral(_) => Ok(BUILTIN_TYPE_I32),
+			ExpressionKind::BoolLiteral(_) => Ok(BUILTIN_TYPE_BOOL),
 			ExpressionKind::Operator(op) if op.is_binary() => {
 				let lhs;
 				let rhs;
@@ -292,8 +290,7 @@ impl TypeChecker<'_> {
 				}
 
 				match op {
-					// TODO: builtin constants
-					Operator::Equals | Operator::NotEquals => Ok(self.parser.find_type_or_add(Type::BuiltIn(BuiltInType::Bool))),
+					Operator::Equals | Operator::NotEquals => Ok(BUILTIN_TYPE_BOOL),
 					_ => Ok(lhs.remove_reference()),
 				}
 			}
@@ -304,8 +301,7 @@ impl TypeChecker<'_> {
 					Rc::clone(&scope),
 				)?;
 
-				// TODO: builtin constants
-				if ty != self.parser.find_type_or_add(Type::BuiltIn(BuiltInType::I32)) {
+				if ty != BUILTIN_TYPE_I32 {
 					return Err(TypeCheckerError::TypeMismatch(format!(
 						"negation only works on i32, got {:?}",
 						ty

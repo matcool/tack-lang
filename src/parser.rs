@@ -20,7 +20,7 @@ pub struct TypeRef {
 }
 
 impl TypeRef {
-	pub fn new(id: usize) -> Self {
+	pub const fn new(id: usize) -> Self {
 		Self { id, reference: false }
 	}
 	
