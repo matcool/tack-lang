@@ -19,7 +19,7 @@ pub struct Compiler {
 impl Compiler {
 	pub fn new(parser: Parser) -> Compiler {
 		Compiler {
-			parser: parser,
+			parser,
 			code: String::from("").into(),
 			variables: HashMap::new().into(),
 			var_counter: 0.into(),

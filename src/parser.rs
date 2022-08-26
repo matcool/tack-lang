@@ -7,13 +7,27 @@ pub enum BuiltInType {
 	Bool,
 }
 
+#[derive(Debug)]
+pub struct StructType {
+	pub name: String,
+	pub fields: Vec<Variable>,
+}
+
+impl PartialEq for StructType {
+	fn eq(&self, other: &Self) -> bool {
+		// is this a good idea?
+		self.name == other.name
+	}
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Type {
 	BuiltIn(BuiltInType),
 	Pointer(TypeRef),
+	Struct(StructType),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct TypeRef {
 	pub id: usize,
 	pub reference: bool,
@@ -36,10 +50,17 @@ pub enum ParsedType {
 	Unknown, // used as a default value, shouldnt be used anywhere
 }
 
+#[derive(Debug, Clone)]
+pub struct ParsedStruct {
+	pub name: String,
+	pub fields: Vec<ParsedVariable>,
+}
+
 impl Operator {
 	const MAX_PRECEDENCE: i32 = 3;
 	fn precedence(&self) -> i32 {
 		match self {
+			Operator::Dot => -1,
 			Operator::Assign => 0,
 			Operator::Equals | Operator::NotEquals => 2,
 			Operator::Add | Operator::Sub => 2,
@@ -151,7 +172,7 @@ impl Scope {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Function {
 	pub name: String,
 	pub parsed_arguments: Vec<ParsedVariable>,
@@ -177,7 +198,7 @@ impl Function {
 pub struct Parser {
 	tokens: std::iter::Peekable<std::vec::IntoIter<Token>>,
 	pub functions: Vec<RefCell<Function>>,
-	pub types: RefCell<Vec<Type>>,
+	pub parsed_structs: Vec<ParsedStruct>,
 }
 
 #[derive(Debug)]
@@ -208,7 +229,7 @@ impl Parser {
 		Parser {
 			tokens,
 			functions: vec![],
-			types: vec![].into(),
+			parsed_structs: vec![],
 		}
 	}
 
@@ -264,6 +285,18 @@ impl Parser {
 				TokenKind::Keyword(Keyword::Struct) => {
 					let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
 
+					let mut parsed_struct = ParsedStruct { name, fields: vec![] };
+
+					expect_token!(self.next()?, TokenKind::LeftBracket)?;
+
+					while !matches!(self.peek()?.kind, TokenKind::RightBracket) {
+						parsed_struct.fields.push(self.parse_var_decl()?);
+						expect_token!(self.next()?, TokenKind::Semicolon)?;
+					}
+					
+					self.next()?; // RightBracket
+
+					self.parsed_structs.push(parsed_struct);
 				}
 				_ => {
 					return Err(ParserError::InvalidToken(token));

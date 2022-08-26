@@ -6,7 +6,7 @@ use crate::{
 	lexer::Operator,
 	parser::{
 		Expression, ExpressionKind, Function, ParsedType, Parser, Scope, Statement, StatementKind,
-		Type, TypeRef, Variable, BuiltInType,
+		Type, TypeRef, Variable, BuiltInType, StructType, ParsedVariable,
 	},
 };
 
@@ -33,42 +33,42 @@ impl Type {
 				BuiltInType::I32 => "i32".to_string(),
 				BuiltInType::Bool => "bool".to_string(),
 			}),
-			Type::Pointer(_) => None
+			Type::Pointer(_) => None,
+			Type::Struct(str) => Some(str.name.clone()),
 		}
 	}
 }
 
-impl Parser {
-	fn find_type<P: FnMut(&&Type) -> bool>(&self, predicate: P) -> Option<TypeRef> {
-		let types = self.types.borrow();
-		if let Some((id, _)) = types.iter().find_position(predicate) {
-			Some(TypeRef::new(id))
-		} else {
-			None
-		}
+pub struct AST {
+	pub functions: Vec<Function>,
+	pub types: Vec<Rc<Type>>,
+}
+
+impl AST {
+	pub fn new() -> Self {
+		Self { functions: vec![], types: vec![] }
 	}
 
-	fn find_type_or_add(&self, ty: Type) -> TypeRef {
-		if let Some(type_ref) = self.find_type(|&t| t == &ty) {
-			type_ref
-		} else {
-			self.add_type(ty)
-		}
+	fn find_type<P: FnMut(&&Rc<Type>) -> bool>(&self, predicate: P) -> Option<TypeRef> {
+		self.types.iter().find_position(predicate).map(|(id, _)| TypeRef::new(id))
+	}
+
+	fn find_type_or_add(&mut self, ty: Type) -> TypeRef {
+		self.find_type(|&t| t.as_ref() == &ty).unwrap_or_else(|| self.add_type(ty))
 	}
 
 	fn find_type_by_name(&self, name: &String) -> Option<TypeRef> {
 		self.find_type(|&t| t.name().map_or(false, |s| &s == name))
 	}
 	
-	fn add_type(&self, ty: Type) -> TypeRef {
-		let mut types = self.types.borrow_mut();
-		types.push(ty);
-		TypeRef::new(types.len() - 1)
+	fn add_type(&mut self, ty: Type) -> TypeRef {
+		self.types.push(Rc::new(ty));
+		TypeRef::new(self.types.len() - 1)
 	}
 
-	// fn get_type<'a>(&'a self, type_ref: TypeRef) -> &'a Type {
-	// 	self.types.borrow().get(type_ref.id).expect("invalid type id passed into get_type")
-	// }
+	pub fn get_type(&self, type_ref: TypeRef) -> Rc<Type> {
+		Rc::clone(self.types.get(type_ref.id).expect("invalid type id passed into get_type"))
+	}
 }
 
 impl Expression {
@@ -90,7 +90,8 @@ impl Expression {
 pub enum TypeCheckerError {
 	TypeMismatch(String),
 	VariableNotFound(String),
-	VariableAlreadyExists(String),
+	// VariableAlreadyExists(String),
+	FieldAlreadyExists(String),
 	FunctionNotFound(String),
 	ArgumentCountMismatch, // great name
 	InvalidReference,
@@ -103,16 +104,31 @@ const BUILTIN_TYPE_BOOL: TypeRef = TypeRef::new(1);
 
 pub struct TypeChecker<'a> {
 	parser: &'a Parser,
+	pub ast: AST,
 }
 
 impl TypeChecker<'_> {
 	pub fn new(parser: &'_ Parser) -> TypeChecker {
-		TypeChecker { parser }
+		TypeChecker { parser, ast: AST::new() }
 	}
 
-	pub fn check(&self) -> Result<(), TypeCheckerError> {
-		self.parser.add_type(Type::BuiltIn(BuiltInType::I32));
-		self.parser.add_type(Type::BuiltIn(BuiltInType::Bool));
+	pub fn check(&mut self) -> Result<(), TypeCheckerError> {
+		self.ast.add_type(Type::BuiltIn(BuiltInType::I32));
+		self.ast.add_type(Type::BuiltIn(BuiltInType::Bool));
+
+		for parsed_struct in &self.parser.parsed_structs {
+			let mut fields: Vec<Variable> = vec![];
+			for field in &parsed_struct.fields {
+				if fields.iter().any(|f| f.name == field.name) {
+					return Err(TypeCheckerError::FieldAlreadyExists(field.name.clone()));
+				}
+				fields.push(self.check_parsed_var(field)?);
+			}
+			self.ast.add_type(Type::Struct(StructType {
+				name: parsed_struct.name.clone(),
+				fields,
+			}));
+		}
 
 		for function in &self.parser.functions {
 			self.check_function(function)?;
@@ -120,7 +136,14 @@ impl TypeChecker<'_> {
 		Ok(())
 	}
 
-	fn check_function(&self, function: &RefCell<Function>) -> Result<(), TypeCheckerError> {
+	fn check_parsed_var(&mut self, parsed_var: &ParsedVariable) -> Result<Variable, TypeCheckerError> {
+		Ok(Variable {
+			name: parsed_var.name.clone(),
+			ty: self.check_parsed_type(&parsed_var.ty)?,
+		})
+	}
+
+	fn check_function(&mut self, function: &RefCell<Function>) -> Result<(), TypeCheckerError> {
 		// check function.parsed_return_type into function.return_type
 		{
 			let mut function = function.borrow_mut();
@@ -128,18 +151,18 @@ impl TypeChecker<'_> {
 
 			let mut args = Vec::new();
 			for arg in &function.parsed_arguments {
-				args.push(Variable {
-					name: arg.name.clone(),
-					ty: self.check_parsed_type(&arg.ty)?,
-				});
+				args.push(self.check_parsed_var(arg)?);
 			}
 			function.arguments = args;
 		}
 		let function = function.borrow();
-		self.check_scope(Rc::clone(&function.scope), &function)
+		self.check_scope(Rc::clone(&function.scope), &function)?;
+		// mm yummy clone!
+		self.ast.functions.push(function.clone());
+		Ok(())
 	}
 
-	fn check_scope(&self, scope: Rc<Scope>, function: &Function) -> Result<(), TypeCheckerError> {
+	fn check_scope(&mut self, scope: Rc<Scope>, function: &Function) -> Result<(), TypeCheckerError> {
 		for statement in &scope.statements {
 			self.check_statement(&mut statement.borrow_mut(), function, Rc::clone(&scope))?;
 		}
@@ -147,7 +170,7 @@ impl TypeChecker<'_> {
 	}
 
 	fn check_statement(
-		&self,
+		&mut self,
 		statement: &mut Statement,
 		function: &Function,
 		scope: Rc<Scope>,
@@ -229,17 +252,17 @@ impl TypeChecker<'_> {
 	}
 
 	fn check_expression(
-		&self,
+		&mut self,
 		expression: &mut Expression,
 		function: &Function,
 		scope: Rc<Scope>,
 	) -> Result<TypeRef, TypeCheckerError> {
 		expression.value_type = self.check_expression_inner(expression, function, scope)?;
-		Ok(expression.value_type.clone())
+		Ok(expression.value_type)
 	}
 
 	fn check_expression_inner(
-		&self,
+		&mut self,
 		expression: &mut Expression,
 		function: &Function,
 		scope: Rc<Scope>,
@@ -279,10 +302,8 @@ impl TypeChecker<'_> {
 					)));
 				}
 
-				if op != &Operator::Assign {
-					if lhs.reference {
-						expression.children[0].replace_with_cast(lhs.remove_reference());
-					}
+				if op != &Operator::Assign && lhs.reference {
+					expression.children[0].replace_with_cast(lhs.remove_reference());
 				}
 
 				if rhs.reference {
@@ -346,7 +367,27 @@ impl TypeChecker<'_> {
 							return Err(TypeCheckerError::TypeMismatch("its wrong buddy".into()));
 						}
 					}
-					Ok(func.return_type.clone())
+					Ok(func.return_type)
+				} else if let Some(type_ref) = self.ast.find_type_by_name(name) {
+					let ty = self.ast.get_type(type_ref);
+					if let Type::Struct(stru) = ty.as_ref() {
+						if stru.fields.len() != expression.children.len() {
+							return Err(TypeCheckerError::ArgumentCountMismatch);
+						}
+						for (field, exp) in stru.fields.iter().zip(expression.children.iter_mut()) {
+							let ty = self.check_expression(exp, function, Rc::clone(&scope))?;
+							if ty.reference {
+								exp.replace_with_cast(ty.remove_reference());
+							}
+	
+							if ty != field.ty {
+								return Err(TypeCheckerError::TypeMismatch("its wrong buddy".into()));
+							}
+						}
+						Ok(type_ref)
+					} else {
+						Err(TypeCheckerError::FunctionNotFound(name.clone()))
+					}
 				} else {
 					Err(TypeCheckerError::FunctionNotFound(name.clone()))
 				}
@@ -356,21 +397,21 @@ impl TypeChecker<'_> {
 				if !type_ref.reference {
 					Err(TypeCheckerError::InvalidReference)
 				} else {
-					Ok(self.parser.find_type_or_add(Type::Pointer(type_ref.remove_reference())))
+					Ok(self.ast.find_type_or_add(Type::Pointer(type_ref.remove_reference())))
 				}
 			}
 			ExpressionKind::Operator(Operator::Dereference) => {
 				let type_ref = self.check_expression(&mut expression.children[0], function, scope)?;
-				let types = self.parser.types.borrow();
-				match &types[type_ref.id] {
+				match self.ast.get_type(type_ref).as_ref() {
 					Type::Pointer(inner) => Ok(inner.add_reference()),
 					_ => Err(TypeCheckerError::InvalidDereference)
 				}
 			}
 			ExpressionKind::ParsedDeclaration(parsed_var) => {
-				let ty = self.check_parsed_type(&parsed_var.ty)?;
-				let var = Variable { name: parsed_var.name.clone(), ty };
-				let new = Expression::new(ExpressionKind::Declaration(var), vec![]);
+				let new = Expression::new(
+					ExpressionKind::Declaration(self.check_parsed_var(parsed_var)?),
+					vec![],
+				);
 				expression.replace_with(new);
 				self.check_expression(expression, function, scope)
 			}
@@ -380,14 +421,14 @@ impl TypeChecker<'_> {
 		}
 	}
 
-	fn check_parsed_type(&self, parsed_type: &ParsedType) -> Result<TypeRef, TypeCheckerError> {
+	fn check_parsed_type(&mut self, parsed_type: &ParsedType) -> Result<TypeRef, TypeCheckerError> {
 		match parsed_type {
 			ParsedType::Name(name) => {
-				self.parser.find_type_by_name(name).ok_or_else(|| TypeCheckerError::UnknownType(name.clone()))
+				self.ast.find_type_by_name(name).ok_or_else(|| TypeCheckerError::UnknownType(name.clone()))
 			}
 			ParsedType::Pointer(inner) => {
 				let inner = self.check_parsed_type(inner)?;
-				Ok(self.parser.find_type_or_add(Type::Pointer(inner)))
+				Ok(self.ast.find_type_or_add(Type::Pointer(inner)))
 			}
 			ParsedType::Unknown => unreachable!()
 		}

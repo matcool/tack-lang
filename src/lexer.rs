@@ -24,6 +24,7 @@ pub enum Operator {
 	NotEquals,
 	And,
 	BitAnd,
+	Dot,
 	// unary ops
 	Not,
 	Negate,
@@ -96,6 +97,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 				'}' => TokenKind::RightBracket,
 				':' => TokenKind::TypeIndicator,
 				',' => TokenKind::Comma,
+				'.' => TokenKind::Operator(Operator::Dot),
 				'+' => TokenKind::Operator(Operator::Add),
 				'-' => TokenKind::Operator(Operator::Sub),
 				'*' => TokenKind::Operator(Operator::Multiply),

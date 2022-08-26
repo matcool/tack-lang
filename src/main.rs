@@ -60,11 +60,13 @@ fn run<S: AsRef<std::path::Path>>(input: S, output_path: Option<String>, graph_f
 	let mut parser = Parser::new(tokens.into_iter().peekable());
 	parser.parse().unwrap();
 
-	TypeChecker::new(&parser).check().unwrap();
+	let mut checker = TypeChecker::new(&parser);
+	checker.check().unwrap();
+	let ast = checker.ast;
 	
 	// println!("{:#?}", parser.functions);
 	if let Some(path) = graph_file {
-		std::fs::write(path, GraphGen::generate_graph(&parser).unwrap()).unwrap();
+		std::fs::write(path, GraphGen::generate_graph(&ast).unwrap()).unwrap();
 	}
 
 	let compiler = Compiler::new(parser);
