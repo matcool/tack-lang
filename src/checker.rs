@@ -427,28 +427,6 @@ impl TypeChecker<'_> {
 						}
 					}
 					Ok(func.return_type)
-				} else if let Some(type_ref) = self.ast.find_type_by_name(name) {
-					let ty = self.ast.get_type(type_ref);
-					if let Type::Struct(stru) = ty.as_ref() {
-						if stru.fields.len() != expression.children.len() {
-							return Err(TypeCheckerError::ArgumentCountMismatch);
-						}
-						for (field, exp) in stru.fields.iter().zip(expression.children.iter_mut()) {
-							let ty = self.check_expression(exp, function, Rc::clone(&scope))?;
-							if ty.reference {
-								exp.replace_with_cast(ty.remove_reference());
-							}
-
-							if ty != field.ty {
-								return Err(TypeCheckerError::TypeMismatch(
-									"its wrong buddy".into(),
-								));
-							}
-						}
-						Ok(type_ref)
-					} else {
-						Err(TypeCheckerError::FunctionNotFound(name.clone()))
-					}
 				} else {
 					Err(TypeCheckerError::FunctionNotFound(name.clone()))
 				}
