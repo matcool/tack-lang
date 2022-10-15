@@ -35,11 +35,18 @@ pub struct TypeRef {
 
 impl TypeRef {
 	pub const fn new(id: usize) -> Self {
-		Self { id, reference: false }
+		Self {
+			id,
+			reference: false,
+		}
 	}
-	
+
 	pub fn unknown() -> Self {
 		Self::new(usize::MAX)
+	}
+
+	pub fn is_unknown(&self) -> bool {
+		self.id == usize::MAX
 	}
 }
 
@@ -57,14 +64,14 @@ pub struct ParsedStruct {
 }
 
 impl Operator {
-	const MAX_PRECEDENCE: i32 = 3;
+	const MAX_PRECEDENCE: i32 = 4;
 	fn precedence(&self) -> i32 {
 		match self {
-			Operator::Dot => -1,
 			Operator::Assign => 0,
 			Operator::Equals | Operator::NotEquals => 2,
 			Operator::Add | Operator::Sub => 2,
 			Operator::Multiply | Operator::Divide => 3,
+			Operator::Dot => 4,
 			_ => 9999,
 		}
 	}
@@ -74,7 +81,7 @@ impl Operator {
 			Operator::Negate => false,
 			Operator::Dereference => false,
 			Operator::Reference => false,
-			_ => true
+			_ => true,
 		}
 	}
 }
@@ -133,12 +140,16 @@ pub enum StatementKind {
 pub struct Statement {
 	pub kind: StatementKind,
 	pub children: Vec<Expression>,
-	pub else_branch: Option<Box<Statement>>
+	pub else_branch: Option<Box<Statement>>,
 }
 
 impl Statement {
 	fn new(kind: StatementKind, children: Vec<Expression>) -> Statement {
-		Statement { kind, children, else_branch: None }
+		Statement {
+			kind,
+			children,
+			else_branch: None,
+		}
 	}
 
 	fn requires_semicolon(&self) -> bool {
@@ -155,7 +166,10 @@ pub struct Scope {
 impl std::fmt::Debug for Scope {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("Scope")
-			.field("parent", self.parent.as_ref().map_or(&"None", |_| &"Some(...)"))
+			.field(
+				"parent",
+				self.parent.as_ref().map_or(&"None", |_| &"Some(...)"),
+			)
 			.field("statements", &self.statements)
 			.field("variables", &self.variables)
 			.finish()
@@ -285,7 +299,10 @@ impl Parser {
 				TokenKind::Keyword(Keyword::Struct) => {
 					let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
 
-					let mut parsed_struct = ParsedStruct { name, fields: vec![] };
+					let mut parsed_struct = ParsedStruct {
+						name,
+						fields: vec![],
+					};
 
 					expect_token!(self.next()?, TokenKind::LeftBracket)?;
 
@@ -293,7 +310,7 @@ impl Parser {
 						parsed_struct.fields.push(self.parse_var_decl()?);
 						expect_token!(self.next()?, TokenKind::Semicolon)?;
 					}
-					
+
 					self.next()?; // RightBracket
 
 					self.parsed_structs.push(parsed_struct);
@@ -364,7 +381,7 @@ impl Parser {
 		let ty = ParsedType::Name(name);
 		if self.peek()?.kind == TokenKind::Operator(Operator::Multiply) {
 			self.next()?; // *
-			// TODO: multiple layers of pointers
+			  // TODO: multiple layers of pointers
 			return Ok(ParsedType::Pointer(Box::new(ty)));
 		}
 		Ok(ty)
@@ -393,10 +410,7 @@ impl Parser {
 				self.next()?; // If
 				let condition = self.parse_expression()?;
 				let scope = self.parse_scope(None)?;
-				let mut stmt = Statement::new(
-					StatementKind::If(Rc::new(scope)),
-					vec![condition],
-				);
+				let mut stmt = Statement::new(StatementKind::If(Rc::new(scope)), vec![condition]);
 				if matches!(self.peek()?.kind, TokenKind::Keyword(Keyword::Else)) {
 					self.next()?; // Else
 					match self.peek()?.kind {
@@ -410,9 +424,10 @@ impl Parser {
 				}
 				Ok(stmt)
 			}
-			TokenKind::LeftBracket => {
-				Ok(Statement::new(StatementKind::Block(Rc::new(self.parse_scope(None)?)), vec![]))
-			}
+			TokenKind::LeftBracket => Ok(Statement::new(
+				StatementKind::Block(Rc::new(self.parse_scope(None)?)),
+				vec![],
+			)),
 			_ => Ok(Statement::new(
 				StatementKind::Expression,
 				vec![self.parse_expression()?],
@@ -446,20 +461,25 @@ impl Parser {
 			}
 			TokenKind::Keyword(Keyword::Let) => {
 				let var = self.parse_var_decl()?;
-				Ok(Expression::new(ExpressionKind::ParsedDeclaration(var), vec![]))
+				Ok(Expression::new(
+					ExpressionKind::ParsedDeclaration(var),
+					vec![],
+				))
 			}
 			TokenKind::LeftParen => {
 				let exp = self.parse_expression()?;
 				expect_token!(self.next()?, TokenKind::RightParen)?;
 				Ok(exp)
 			}
-			TokenKind::Operator(op @ (Operator::Sub | Operator::Not | Operator::Multiply | Operator::BitAnd)) => {
+			TokenKind::Operator(
+				op @ (Operator::Sub | Operator::Not | Operator::Multiply | Operator::BitAnd),
+			) => {
 				let child = self.parse_expression_primary()?;
 				let op = match op {
 					Operator::Sub => Operator::Negate,
 					Operator::Multiply => Operator::Dereference,
 					Operator::BitAnd => Operator::Reference,
-					op => op
+					op => op,
 				};
 				Ok(Expression::new(ExpressionKind::Operator(op), vec![child]))
 			}

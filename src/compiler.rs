@@ -1,25 +1,56 @@
 use std::{
 	cell::{Cell, RefCell},
-	collections::HashMap, rc::Rc,
+	collections::HashMap,
+	rc::Rc,
 };
 
 use crate::{
+	checker::AST,
 	lexer::Operator,
-	parser::{Expression, ExpressionKind, Function, Parser, Statement, StatementKind, Scope},
+	parser::{
+		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind, Type,
+	},
 };
 
 pub struct Compiler {
-	parser: Parser,
+	ast: AST,
 	code: RefCell<String>,
 	variables: RefCell<HashMap<String, i32>>,
 	var_counter: Cell<i32>,
 	label_counter: Cell<i32>,
 }
 
+impl Type {
+	pub fn size(&self, ast: &AST) -> usize {
+		match self {
+			Type::BuiltIn(built_in) => match built_in {
+				BuiltInType::I32 => 4,
+				BuiltInType::Bool => 1,
+			},
+			Type::Pointer(_) => 4, // TODO: change me
+			Type::Struct(stru) => stru
+				.fields
+				.iter()
+				.map(|field| ast.get_type_size(field.ty))
+				.sum(),
+		}
+	}
+}
+
+impl Scope {
+	fn size(&self, ast: &AST) -> usize {
+		self.variables
+			.borrow()
+			.iter()
+			.map(|var| ast.get_type_size(var.ty))
+			.sum()
+	}
+}
+
 impl Compiler {
-	pub fn new(parser: Parser) -> Compiler {
+	pub fn new(ast: AST) -> Compiler {
 		Compiler {
-			parser,
+			ast,
 			code: String::from("").into(),
 			variables: HashMap::new().into(),
 			var_counter: 0.into(),
@@ -33,8 +64,8 @@ impl Compiler {
 	}
 
 	pub fn compile(&self) -> String {
-		for function in &self.parser.functions {
-			self.compile_function(&function.borrow());
+		for function in &self.ast.functions {
+			self.compile_function(function);
 		}
 		self.code.borrow().clone()
 	}
@@ -48,10 +79,9 @@ impl Compiler {
 			self.write("push ebp");
 			self.write("mov ebp, esp");
 			if !function.scope.variables.borrow().is_empty() {
-				self.write(format!(
-					"sub esp, {}",
-					function.scope.variables.borrow().len() * 4
-				));
+				// TODO: save this in the function as to not calculate it every time
+				let scope_size = function.scope.size(&self.ast);
+				self.write(format!("sub esp, {}", scope_size));
 			}
 		}
 
@@ -64,10 +94,8 @@ impl Compiler {
 		let vars = function.scope.variables.borrow();
 		if !vars.is_empty() || !function.arguments.is_empty() {
 			if !vars.is_empty() {
-				self.write(format!(
-					"add esp, {}",
-					function.scope.variables.borrow().len() * 4
-				));
+				let scope_size = function.scope.size(&self.ast);
+				self.write(format!("add esp, {}", scope_size));
 			}
 			self.write("mov esp, ebp");
 			self.write("pop ebp");
@@ -135,6 +163,7 @@ impl Compiler {
 	}
 
 	fn compile_expression(&self, exp: &Expression, function: &Function) {
+		self.write(format!("; {:?}", exp.kind));
 		match exp.kind {
 			ExpressionKind::NumberLiteral(number) => {
 				self.write(format!("mov eax, {}", number));
@@ -151,14 +180,15 @@ impl Compiler {
 				self.write("mov eax, ecx");
 			}
 			ExpressionKind::Declaration(ref var) => {
-				let val = self.var_counter.get();
+				let size = self.ast.get_type_size(var.ty);
+				let val = self.var_counter.get() + size as i32;
+				self.var_counter.set(val);
 				self.variables.borrow_mut().insert(var.name.clone(), val);
-				self.write(format!("lea eax, [ebp - {}]", val * 4));
-				self.var_counter.set(val + 1)
+				self.write(format!("lea eax, [ebp - {}]", val));
 			}
 			ExpressionKind::Variable(ref name) => {
 				if let Some(val) = self.variables.borrow().get(name) {
-					self.write(format!("lea eax, [ebp - {}]", val * 4));
+					self.write(format!("lea eax, [ebp - {}]", val));
 				} else {
 					// hopefully its a function argument, otherwise type checker haveth failed us
 					let index = function
@@ -166,9 +196,32 @@ impl Compiler {
 						.iter()
 						.enumerate()
 						.find(|(_, x)| &x.name == name)
-						.expect("expected variable.. type checker went wrong somewhere").0;
+						.expect("expected variable.. type checker went wrong somewhere")
+						.0;
 					let stack_index = function.arguments.len() - index - 1 + 2;
 					self.write(format!("lea eax, [ebp + {}]", stack_index * 4));
+				}
+			}
+			ExpressionKind::Operator(Operator::Dot) => {
+				self.compile_expression(&exp.children[0], function);
+				// TODO: figure out the member offset..
+				// TODO: store member access in a different way?
+				if let ExpressionKind::Variable(name) = &exp.children[1].kind {
+					if let Type::Struct(stru) =
+						self.ast.get_type(exp.children[0].value_type).as_ref()
+					{
+						let mut offset = 0;
+						for field in &stru.fields {
+							if &field.name == name {
+								self.write(format!("lea eax, [eax + {}]", offset));
+								break;
+							} else {
+								offset += self.ast.get_type_size(field.ty);
+							}
+						}
+					}
+				} else {
+					unreachable!("why are you here {:?}", exp.children[1]);
 				}
 			}
 			ExpressionKind::Operator(op) if op.is_binary() => {
@@ -186,7 +239,7 @@ impl Compiler {
 							self.write("setne al");
 						}
 					}
-					_ => todo!("unhandled {:?}", op)
+					_ => todo!("unhandled {:?}", op),
 				}
 			}
 			ExpressionKind::Cast => {
@@ -208,8 +261,12 @@ impl Compiler {
 					self.write("push eax");
 				}
 				self.write(format!("call {name}"));
-				let func = self.parser.functions.iter().find(|f| &f.borrow().name == name).expect("where the function");
-				let func = func.borrow();
+				let func = self
+					.ast
+					.functions
+					.iter()
+					.find(|f| &f.name == name)
+					.expect("where the function");
 				if !func.arguments.is_empty() {
 					self.write(format!("add esp, {}", func.arguments.len() * 4));
 				}

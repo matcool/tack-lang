@@ -51,7 +51,12 @@ fn main() {
 	run(input, output, Some("graph.gv".into()), build);
 }
 
-fn run<S: AsRef<std::path::Path>>(input: S, output_path: Option<String>, graph_file: Option<String>, build: bool) {
+fn run<S: AsRef<std::path::Path>>(
+	input: S,
+	output_path: Option<String>,
+	graph_file: Option<String>,
+	build: bool,
+) {
 	let contents = std::fs::read_to_string(input).unwrap();
 
 	let mut lexer = Lexer::new(contents.chars().peekable());
@@ -60,16 +65,19 @@ fn run<S: AsRef<std::path::Path>>(input: S, output_path: Option<String>, graph_f
 	let mut parser = Parser::new(tokens.into_iter().peekable());
 	parser.parse().unwrap();
 
+	// println!("{:#?}", parser.functions);
+
 	let mut checker = TypeChecker::new(&parser);
 	checker.check().unwrap();
 	let ast = checker.ast;
-	
-	// println!("{:#?}", parser.functions);
+
+	// println!("{:#?}", ast.functions);
+
 	if let Some(path) = graph_file {
 		std::fs::write(path, GraphGen::generate_graph(&ast).unwrap()).unwrap();
 	}
 
-	let compiler = Compiler::new(parser);
+	let compiler = Compiler::new(ast);
 
 	let asm_output = compiler.compile();
 
@@ -105,7 +113,15 @@ fn run_tests() {
 			for file in std::fs::read_dir(folder.path()).unwrap() {
 				let file = file.unwrap();
 				print!("{} - ", file.path().to_slash().unwrap());
-				assert!(file.file_name().to_str().unwrap().to_string().ends_with(".tack"), "Unknown file in test folder: {:?}", file.file_name());
+				assert!(
+					file.file_name()
+						.to_str()
+						.unwrap()
+						.to_string()
+						.ends_with(".tack"),
+					"Unknown file in test folder: {:?}",
+					file.file_name()
+				);
 				// oops this keeps the .tack file ext.. oh well
 				let binary_path = build_path.join(format!(
 					"{}__{}",
@@ -124,7 +140,11 @@ fn run_tests() {
 					.arg(format!("./{}", binary_path.to_slash().unwrap()))
 					.output()
 					.unwrap();
-				println!("returned code {}, output: {:?}", out.status.code().unwrap(), out.stdout);
+				println!(
+					"returned code {}, output: {:?}",
+					out.status.code().unwrap(),
+					out.stdout
+				);
 			}
 		}
 	}

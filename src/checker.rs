@@ -5,18 +5,24 @@ use itertools::Itertools;
 use crate::{
 	lexer::Operator,
 	parser::{
-		Expression, ExpressionKind, Function, ParsedType, Parser, Scope, Statement, StatementKind,
-		Type, TypeRef, Variable, BuiltInType, StructType, ParsedVariable,
+		BuiltInType, Expression, ExpressionKind, Function, ParsedType, ParsedVariable, Parser,
+		Scope, Statement, StatementKind, StructType, Type, TypeRef, Variable,
 	},
 };
 
 impl TypeRef {
 	fn add_reference(&self) -> Self {
-		Self { id: self.id, reference: true }
+		Self {
+			id: self.id,
+			reference: true,
+		}
 	}
 
 	fn remove_reference(&self) -> Self {
-		Self { id: self.id, reference: false }
+		Self {
+			id: self.id,
+			reference: false,
+		}
 	}
 }
 
@@ -46,28 +52,43 @@ pub struct AST {
 
 impl AST {
 	pub fn new() -> Self {
-		Self { functions: vec![], types: vec![] }
+		Self {
+			functions: vec![],
+			types: vec![],
+		}
 	}
 
 	fn find_type<P: FnMut(&&Rc<Type>) -> bool>(&self, predicate: P) -> Option<TypeRef> {
-		self.types.iter().find_position(predicate).map(|(id, _)| TypeRef::new(id))
+		self.types
+			.iter()
+			.find_position(predicate)
+			.map(|(id, _)| TypeRef::new(id))
 	}
 
 	fn find_type_or_add(&mut self, ty: Type) -> TypeRef {
-		self.find_type(|&t| t.as_ref() == &ty).unwrap_or_else(|| self.add_type(ty))
+		self.find_type(|&t| t.as_ref() == &ty)
+			.unwrap_or_else(|| self.add_type(ty))
 	}
 
 	fn find_type_by_name(&self, name: &String) -> Option<TypeRef> {
 		self.find_type(|&t| t.name().map_or(false, |s| &s == name))
 	}
-	
+
 	fn add_type(&mut self, ty: Type) -> TypeRef {
 		self.types.push(Rc::new(ty));
 		TypeRef::new(self.types.len() - 1)
 	}
 
 	pub fn get_type(&self, type_ref: TypeRef) -> Rc<Type> {
-		Rc::clone(self.types.get(type_ref.id).expect("invalid type id passed into get_type"))
+		Rc::clone(
+			self.types
+				.get(type_ref.id)
+				.expect("invalid type id passed into get_type"),
+		)
+	}
+
+	pub fn get_type_size(&self, type_ref: TypeRef) -> usize {
+		self.get_type(type_ref).size(self)
 	}
 }
 
@@ -75,7 +96,7 @@ impl Expression {
 	fn replace_with(&mut self, mut new: Expression) {
 		std::mem::swap(self, &mut new);
 	}
-	
+
 	fn replace_with_cast(&mut self, typ: TypeRef) {
 		let mut cast = Expression::new(ExpressionKind::Cast, vec![]);
 		cast.value_type = typ;
@@ -109,7 +130,10 @@ pub struct TypeChecker<'a> {
 
 impl TypeChecker<'_> {
 	pub fn new(parser: &'_ Parser) -> TypeChecker {
-		TypeChecker { parser, ast: AST::new() }
+		TypeChecker {
+			parser,
+			ast: AST::new(),
+		}
 	}
 
 	pub fn check(&mut self) -> Result<(), TypeCheckerError> {
@@ -136,7 +160,10 @@ impl TypeChecker<'_> {
 		Ok(())
 	}
 
-	fn check_parsed_var(&mut self, parsed_var: &ParsedVariable) -> Result<Variable, TypeCheckerError> {
+	fn check_parsed_var(
+		&mut self,
+		parsed_var: &ParsedVariable,
+	) -> Result<Variable, TypeCheckerError> {
 		Ok(Variable {
 			name: parsed_var.name.clone(),
 			ty: self.check_parsed_type(&parsed_var.ty)?,
@@ -162,7 +189,11 @@ impl TypeChecker<'_> {
 		Ok(())
 	}
 
-	fn check_scope(&mut self, scope: Rc<Scope>, function: &Function) -> Result<(), TypeCheckerError> {
+	fn check_scope(
+		&mut self,
+		scope: Rc<Scope>,
+		function: &Function,
+	) -> Result<(), TypeCheckerError> {
 		for statement in &scope.statements {
 			self.check_statement(&mut statement.borrow_mut(), function, Rc::clone(&scope))?;
 		}
@@ -286,6 +317,34 @@ impl TypeChecker<'_> {
 							"Left hand side of assignment must be reference".into(),
 						));
 					}
+				} else if op == &Operator::Dot {
+					lhs = self.check_expression(&mut expression.children[0], function, scope)?;
+
+					let ty = self.ast.get_type(lhs);
+
+					if let Type::Struct(stru) = ty.as_ref() {
+						#[rustfmt::skip]
+						let name = if let ExpressionKind::Variable(ref var_name) = &expression.children[1].kind {
+							var_name.clone()
+						} else {
+							return Err(TypeCheckerError::TypeMismatch(
+								"You stink at member access".into(),
+							));
+						};
+						if let Some(field) = stru.fields.iter().find(|f| f.name == name) {
+							expression.children[1].value_type = field.ty.add_reference();
+							return Ok(field.ty.add_reference());
+						} else {
+							println!("could not find {} in {}", name, stru.name);
+							return Err(TypeCheckerError::TypeMismatch(
+								"You stink at member access again".into(),
+							));
+						}
+					} else {
+						return Err(TypeCheckerError::TypeMismatch(
+							"Expected lhs to be a struct".into(),
+						));
+					}
 				} else {
 					lhs = self.check_expression(
 						&mut expression.children[0],
@@ -379,9 +438,11 @@ impl TypeChecker<'_> {
 							if ty.reference {
 								exp.replace_with_cast(ty.remove_reference());
 							}
-	
+
 							if ty != field.ty {
-								return Err(TypeCheckerError::TypeMismatch("its wrong buddy".into()));
+								return Err(TypeCheckerError::TypeMismatch(
+									"its wrong buddy".into(),
+								));
 							}
 						}
 						Ok(type_ref)
@@ -393,18 +454,22 @@ impl TypeChecker<'_> {
 				}
 			}
 			ExpressionKind::Operator(Operator::Reference) => {
-				let type_ref = self.check_expression(&mut expression.children[0], function, scope)?;
+				let type_ref =
+					self.check_expression(&mut expression.children[0], function, scope)?;
 				if !type_ref.reference {
 					Err(TypeCheckerError::InvalidReference)
 				} else {
-					Ok(self.ast.find_type_or_add(Type::Pointer(type_ref.remove_reference())))
+					Ok(self
+						.ast
+						.find_type_or_add(Type::Pointer(type_ref.remove_reference())))
 				}
 			}
 			ExpressionKind::Operator(Operator::Dereference) => {
-				let type_ref = self.check_expression(&mut expression.children[0], function, scope)?;
+				let type_ref =
+					self.check_expression(&mut expression.children[0], function, scope)?;
 				match self.ast.get_type(type_ref).as_ref() {
 					Type::Pointer(inner) => Ok(inner.add_reference()),
-					_ => Err(TypeCheckerError::InvalidDereference)
+					_ => Err(TypeCheckerError::InvalidDereference),
 				}
 			}
 			ExpressionKind::ParsedDeclaration(parsed_var) => {
@@ -423,14 +488,15 @@ impl TypeChecker<'_> {
 
 	fn check_parsed_type(&mut self, parsed_type: &ParsedType) -> Result<TypeRef, TypeCheckerError> {
 		match parsed_type {
-			ParsedType::Name(name) => {
-				self.ast.find_type_by_name(name).ok_or_else(|| TypeCheckerError::UnknownType(name.clone()))
-			}
+			ParsedType::Name(name) => self
+				.ast
+				.find_type_by_name(name)
+				.ok_or_else(|| TypeCheckerError::UnknownType(name.clone())),
 			ParsedType::Pointer(inner) => {
 				let inner = self.check_parsed_type(inner)?;
 				Ok(self.ast.find_type_or_add(Type::Pointer(inner)))
 			}
-			ParsedType::Unknown => unreachable!()
+			ParsedType::Unknown => unreachable!(),
 		}
 	}
 }

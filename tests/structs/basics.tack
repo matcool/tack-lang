@@ -4,6 +4,9 @@ struct Point {
 }
 
 fn main(): i32 {
-	let point: Point = Point(10, 20,);
-	// return point.x + point.y;
+	let point: Point;
+	point.x = 10;
+	point.y = 13;
+
+	return point.x + point.y;
 }

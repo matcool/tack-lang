@@ -1,7 +1,7 @@
 use std::fmt::Write;
 
-use crate::parser::{Expression, ExpressionKind, Scope, Statement, StatementKind, Type, TypeRef};
 use crate::checker::AST;
+use crate::parser::{Expression, ExpressionKind, Scope, Statement, StatementKind, Type, TypeRef};
 
 pub struct GraphGen {
 	out: String,
@@ -9,11 +9,18 @@ pub struct GraphGen {
 }
 
 fn format_type(ast: &AST, type_ref: &TypeRef) -> String {
+	if type_ref.is_unknown() {
+		return format!("?? {}", if type_ref.reference { "&" } else { "" });
+	}
 	let ty = ast.get_type(*type_ref);
-	format!("{}{}", match ty.as_ref() {
-		Type::Pointer(inner) => format!("{}*", format_type(ast, inner)),
-		_ => ty.name().unwrap()
-	}, if type_ref.reference { "&" } else { "" })
+	format!(
+		"{}{}",
+		match ty.as_ref() {
+			Type::Pointer(inner) => format!("{}*", format_type(ast, inner)),
+			_ => ty.name().unwrap(),
+		},
+		if type_ref.reference { "&" } else { "" }
+	)
 }
 
 impl GraphGen {
@@ -37,7 +44,9 @@ impl GraphGen {
 			writeln!(
 				obj.out,
 				"node{} [label=\"{}: {}\"]",
-				id, function.name, format_type(ast, &function.return_type)
+				id,
+				function.name,
+				format_type(ast, &function.return_type)
 			)?;
 			obj.generate_scope(ast, &function.scope, id)?;
 		}
@@ -46,7 +55,12 @@ impl GraphGen {
 		Ok(obj.out)
 	}
 
-	fn generate_scope(&mut self, ast: &AST, scope: &Scope, parent_id: i32) -> Result<(), std::fmt::Error> {
+	fn generate_scope(
+		&mut self,
+		ast: &AST,
+		scope: &Scope,
+		parent_id: i32,
+	) -> Result<(), std::fmt::Error> {
 		for stmt in &scope.statements {
 			let id = self.generate_statement(ast, &stmt.borrow())?;
 			// TODO: change arrow shape for parent -> statement connections
@@ -62,25 +76,27 @@ impl GraphGen {
 			// incredible
 			x.split_once('(').map_or(x.clone(), |(x, _)| x.to_string())
 		};
-		
-		writeln!(
-			self.out,
-			"node{} [color=coral3 label=\"{}\"]",
-			id, name
-		)?;
+
+		writeln!(self.out, "node{} [color=coral3 label=\"{}\"]", id, name)?;
 		for exp in &stmt.children {
 			let child_id = self.generate_expression(ast, exp)?;
 			writeln!(self.out, "node{} -> node{}", id, child_id)?;
 		}
 		match &stmt.kind {
-			StatementKind::While(ref scope) | StatementKind::If(ref scope) | StatementKind::Block(ref scope) => {
+			StatementKind::While(ref scope)
+			| StatementKind::If(ref scope)
+			| StatementKind::Block(ref scope) => {
 				self.generate_scope(ast, scope, id)?;
 			}
 			_ => {}
 		}
 		if let Some(else_branch) = &stmt.else_branch {
 			let child_id = self.generate_statement(ast, else_branch)?;
-			writeln!(self.out, "node{} -> node{} [label=\"else\" color=red]", id, child_id)?;
+			writeln!(
+				self.out,
+				"node{} -> node{} [label=\"else\" color=red]",
+				id, child_id
+			)?;
 		}
 		Ok(id)
 	}
@@ -90,7 +106,12 @@ impl GraphGen {
 		write!(self.out, "node{} [color=darkgreen label=\"", id)?;
 		match &exp.kind {
 			ExpressionKind::Declaration(var) => {
-				write!(self.out, "Declaration({}, {})", var.name, format_type(ast, &var.ty))?;
+				write!(
+					self.out,
+					"Declaration({}, {})",
+					var.name,
+					format_type(ast, &var.ty)
+				)?;
 			}
 			ExpressionKind::Variable(name) => {
 				write!(self.out, "Variable({name})")?;
