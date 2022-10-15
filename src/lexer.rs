@@ -149,7 +149,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 				ch => {
 					let mut identifer: String = self
 						.iterator
-						.peeking_take_while(|c| c.is_alphanumeric())
+						.peeking_take_while(|c| c.is_alphanumeric() || c == &'_')
 						.collect();
 					// not very elegant :(
 					identifer.insert(0, ch);

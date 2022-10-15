@@ -8,6 +8,10 @@ pub struct GraphGen {
 	counter: i32,
 }
 
+fn escape_rust_for_graphviz(str: &String) -> String {
+	str.replace('"', "\\\"").replace('{', "[").replace('}', "]")
+}
+
 fn format_type(ast: &AST, type_ref: &TypeRef) -> String {
 	if type_ref.is_unknown() {
 		return format!("?? {}", if type_ref.reference { "&" } else { "" });
@@ -119,8 +123,20 @@ impl GraphGen {
 			ExpressionKind::Call(name) => {
 				write!(self.out, "Call({name})")?;
 			}
+			ExpressionKind::StructAccess(struct_ref, field) => {
+				write!(
+					self.out,
+					"StructAccess({}, {})",
+					format_type(ast, struct_ref),
+					field
+				)?;
+			}
 			kind => {
-				write!(self.out, "{:?}", kind)?;
+				write!(
+					self.out,
+					"{}",
+					escape_rust_for_graphviz(&format!("{:?}", kind))
+				)?;
 			}
 		}
 		writeln!(self.out, " | {}\"]", format_type(ast, &exp.value_type))?;

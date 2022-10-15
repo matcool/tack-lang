@@ -97,6 +97,11 @@ impl Expression {
 		std::mem::swap(self, &mut new);
 	}
 
+	fn replace_with_children(&mut self, mut new: Expression) {
+		std::mem::swap(self, &mut new);
+		self.children.extend(new.children.drain(..));
+	}
+
 	fn replace_with_cast(&mut self, typ: TypeRef) {
 		let mut cast = Expression::new(ExpressionKind::Cast, vec![]);
 		cast.value_type = typ;
@@ -232,6 +237,9 @@ impl TypeChecker<'_> {
 						ty
 					)));
 				}
+				if ty.reference {
+					statement.children[0].replace_with_cast(ty.remove_reference());
+				}
 				self.check_scope(Rc::clone(inner_scope), function)?;
 			}
 			StatementKind::If(ref mut inner_scope) => {
@@ -244,6 +252,9 @@ impl TypeChecker<'_> {
 						"expected bool, got {:?}",
 						ty
 					)));
+				}
+				if ty.reference {
+					statement.children[0].replace_with_cast(ty.remove_reference());
 				}
 				self.check_scope(Rc::clone(inner_scope), function)?;
 				if let Some(else_branch) = &mut statement.else_branch {
@@ -301,6 +312,85 @@ impl TypeChecker<'_> {
 		match &expression.kind {
 			ExpressionKind::NumberLiteral(_) => Ok(BUILTIN_TYPE_I32),
 			ExpressionKind::BoolLiteral(_) => Ok(BUILTIN_TYPE_BOOL),
+			ExpressionKind::Operator(Operator::Dot) => {
+				let lhs = self.check_expression(
+					&mut expression.children[0],
+					function,
+					Rc::clone(&scope),
+				)?;
+
+				let ty = self.ast.get_type(lhs);
+
+				let name =
+					if let ExpressionKind::Variable(ref var_name) = &expression.children[1].kind {
+						var_name.clone()
+					} else {
+						return Err(TypeCheckerError::TypeMismatch(format!(
+							"Expected identifier, got {:?}",
+							expression.children[1].kind
+						)));
+					};
+
+				let mut struct_type_ref: Option<TypeRef> = None;
+				let mut is_pointer = false;
+				match ty.as_ref() {
+					Type::Struct(_) => {
+						struct_type_ref = Some(lhs);
+					}
+					Type::Pointer(inner) => {
+						let ty = self.ast.get_type(*inner);
+						// TODO: support member access of struct** ?
+						// seems kinda silly
+						if let Type::Struct(_) = ty.as_ref() {
+							struct_type_ref = Some(*inner);
+							is_pointer = true;
+						}
+					}
+					_ => {}
+				};
+
+				if let Some(ty) = struct_type_ref {
+					expression.kind = ExpressionKind::StructAccess(ty, name);
+				} else {
+					return Err(TypeCheckerError::TypeMismatch(
+						"Expected lhs to be a struct".into(),
+					));
+				}
+
+				// nuke children
+				let first_child;
+				{
+					let mut drain = expression.children.drain(..);
+					first_child = drain.next().unwrap();
+				}
+
+				if is_pointer {
+					let mut deref = Expression::new(
+						ExpressionKind::Operator(Operator::Dereference),
+						vec![first_child],
+					);
+					deref.value_type = struct_type_ref.unwrap().add_reference();
+					expression.children.push(deref);
+				} else {
+					expression.children.push(first_child);
+				}
+
+				self.check_expression(expression, function, Rc::clone(&scope))
+			}
+			ExpressionKind::StructAccess(type_ref, field_name) => {
+				if let Type::Struct(stru) = self.ast.get_type(*type_ref).as_ref() {
+					if let Some(field) = stru.fields.iter().find(|f| &f.name == field_name) {
+						Ok(field.ty.add_reference())
+					} else {
+						Err(TypeCheckerError::TypeMismatch(format!(
+							"could not find {} in {}",
+							field_name, stru.name
+						)))
+					}
+				} else {
+					unreachable!();
+				}
+			}
 			ExpressionKind::Operator(op) if op.is_binary() => {
 				let lhs;
 				let rhs;
@@ -315,34 +405,6 @@ impl TypeChecker<'_> {
 					if !lhs.reference {
 						return Err(TypeCheckerError::TypeMismatch(
 							"Left hand side of assignment must be reference".into(),
-						));
-					}
-				} else if op == &Operator::Dot {
-					lhs = self.check_expression(&mut expression.children[0], function, scope)?;
-
-					let ty = self.ast.get_type(lhs);
-
-					if let Type::Struct(stru) = ty.as_ref() {
-						#[rustfmt::skip]
-						let name = if let ExpressionKind::Variable(ref var_name) = &expression.children[1].kind {
-							var_name.clone()
-						} else {
-							return Err(TypeCheckerError::TypeMismatch(
-								"You stink at member access".into(),
-							));
-						};
-						if let Some(field) = stru.fields.iter().find(|f| f.name == name) {
-							expression.children[1].value_type = field.ty.add_reference();
-							return Ok(field.ty.add_reference());
-						} else {
-							println!("could not find {} in {}", name, stru.name);
-							return Err(TypeCheckerError::TypeMismatch(
-								"You stink at member access again".into(),
-							));
-						}
-					} else {
-						return Err(TypeCheckerError::TypeMismatch(
-							"Expected lhs to be a struct".into(),
 						));
 					}
 				} else {
@@ -423,7 +485,10 @@ impl TypeChecker<'_> {
 						}
 
 						if ty != arg.ty {
-							return Err(TypeCheckerError::TypeMismatch("its wrong buddy".into()));
+							return Err(TypeCheckerError::TypeMismatch(format!(
+								"{:?} did not match {:?}",
+								ty, arg.ty
+							)));
 						}
 					}
 					Ok(func.return_type)

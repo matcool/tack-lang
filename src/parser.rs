@@ -108,6 +108,7 @@ pub enum ExpressionKind {
 	Operator(Operator),
 	Call(String),
 	Cast,
+	StructAccess(TypeRef, String),
 }
 
 #[derive(Debug)]

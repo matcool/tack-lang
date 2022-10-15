@@ -203,25 +203,21 @@ impl Compiler {
 				}
 			}
 			ExpressionKind::Operator(Operator::Dot) => {
+				unreachable!("shouldnt be getting operator dot in compiler!");
+			}
+			ExpressionKind::StructAccess(struct_type_ref, ref field_name) => {
 				self.compile_expression(&exp.children[0], function);
-				// TODO: figure out the member offset..
-				// TODO: store member access in a different way?
-				if let ExpressionKind::Variable(name) = &exp.children[1].kind {
-					if let Type::Struct(stru) =
-						self.ast.get_type(exp.children[0].value_type).as_ref()
-					{
-						let mut offset = 0;
-						for field in &stru.fields {
-							if &field.name == name {
-								self.write(format!("lea eax, [eax + {}]", offset));
-								break;
-							} else {
-								offset += self.ast.get_type_size(field.ty);
-							}
+				let ty = self.ast.get_type(struct_type_ref);
+				if let Type::Struct(stru) = ty.as_ref() {
+					let mut offset = 0;
+					for field in &stru.fields {
+						if &field.name == field_name {
+							self.write(format!("lea eax, [eax + {}]", offset));
+							break;
+						} else {
+							offset += self.ast.get_type_size(field.ty);
 						}
 					}
-				} else {
-					unreachable!("why are you here {:?}", exp.children[1]);
 				}
 			}
 			ExpressionKind::Operator(op) if op.is_binary() => {

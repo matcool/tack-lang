@@ -1,0 +1,14 @@
+struct Point {
+	x: i32;
+	y: i32;
+}
+
+fn main(): i32 {
+	let point: Point;
+
+	let point_ptr: Point* = &point;
+
+	point_ptr.x = 10;
+
+	return point.x;
+}
