@@ -176,7 +176,15 @@ impl Compiler {
 				self.write("push eax");
 				self.compile_expression(&exp.children[0], function);
 				self.write("pop ecx");
-				self.write("mov [eax], ecx");
+
+				let lhs_size = self.ast.get_type_size(exp.children[0].value_type);
+				match lhs_size {
+					1 => self.write("mov BYTE [eax], cl"),
+					2 => self.write("mov WORD [eax], cx"),
+					4 => self.write("mov [eax], ecx"),
+					_ => unimplemented!("assignment for type with size {}", lhs_size),
+				};
+
 				self.write("mov eax, ecx");
 			}
 			ExpressionKind::Declaration(ref var) => {

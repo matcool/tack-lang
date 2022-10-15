@@ -1,0 +1,23 @@
+struct OptionalI32 {
+	value: i32;
+	has_value: bool;
+}
+
+fn value_or_default(opt: OptionalI32*, default: i32): i32 {
+	if opt.has_value {
+		return opt.value;
+	} else {
+		return default;
+	}
+}
+
+fn main(): i32 {
+	let opt1: OptionalI32;
+	opt1.value = 23;
+	opt1.has_value = true;
+
+	let opt2: OptionalI32;
+	opt2.has_value = false;
+
+	return value_or_default(&opt1, 15) + value_or_default(&opt2, 10);
+}
