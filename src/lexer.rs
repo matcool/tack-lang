@@ -25,6 +25,7 @@ pub enum Operator {
 	And,
 	BitAnd,
 	Dot,
+	As,
 	// unary ops
 	Not,
 	Negate,
@@ -163,6 +164,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 						"else" => TokenKind::Keyword(Keyword::Else),
 						"while" => TokenKind::Keyword(Keyword::While),
 						"struct" => TokenKind::Keyword(Keyword::Struct),
+						"as" => TokenKind::Operator(Operator::As),
 						_ => TokenKind::Identifier(identifer),
 					}
 				}

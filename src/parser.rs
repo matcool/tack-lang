@@ -4,6 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 #[derive(Debug, PartialEq)]
 pub enum BuiltInType {
 	I32,
+	U8,
 	Bool,
 }
 
@@ -64,14 +65,15 @@ pub struct ParsedStruct {
 }
 
 impl Operator {
-	const MAX_PRECEDENCE: i32 = 4;
+	const MAX_PRECEDENCE: i32 = 5;
 	fn precedence(&self) -> i32 {
 		match self {
 			Operator::Assign => 0,
-			Operator::Equals | Operator::NotEquals => 2,
+			Operator::Equals | Operator::NotEquals => 1,
 			Operator::Add | Operator::Sub => 2,
 			Operator::Multiply | Operator::Divide => 3,
-			Operator::Dot => 4,
+			Operator::As => 4,
+			Operator::Dot => 5,
 			_ => 9999,
 		}
 	}
@@ -491,6 +493,7 @@ impl Parser {
 	}
 
 	fn parse_expression_inner(&mut self, prec: i32) -> Result<Expression, ParserError> {
+		// FIXME: x.y.z gets parsed as x.(y.z) when it should be (x.y).z
 		if prec > Operator::MAX_PRECEDENCE {
 			return self.parse_expression_primary();
 		}

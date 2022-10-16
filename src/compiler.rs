@@ -25,6 +25,7 @@ impl Type {
 		match self {
 			Type::BuiltIn(built_in) => match built_in {
 				BuiltInType::I32 => 4,
+				BuiltInType::U8 => 1,
 				BuiltInType::Bool => 1,
 			},
 			Type::Pointer(_) => 4, // TODO: change me
@@ -252,11 +253,19 @@ impl Compiler {
 				if !exp.value_type.reference && child.value_type.reference {
 					self.write("mov eax, [eax]");
 				} else {
-					todo!(
-						"unhandled cast from {:?} to {:?}",
-						child.value_type,
-						exp.value_type
-					);
+					let from = self.ast.get_type(child.value_type);
+					let to = self.ast.get_type(exp.value_type);
+
+					match (from.as_ref(), to.as_ref()) {
+						(Type::BuiltIn(_), Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8)) => {}
+						(Type::BuiltIn(_), Type::BuiltIn(BuiltInType::Bool)) => {
+							self.write("cmp eax, 0");
+							self.write("setne al");
+						}
+						_ => {
+							todo!("unhandled cast from {:?} to {:?}", from, to);
+						}
+					}
 				}
 			}
 			ExpressionKind::Call(ref name) => {
