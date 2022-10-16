@@ -40,11 +40,16 @@ fn main() {
 					.arg(format!("./{}", binary_path.to_slash().unwrap()))
 					.output()
 					.unwrap();
-				println!(
-					"returned code {}, output: {:?}",
-					out.status.code().unwrap(),
+				let code = out.status.code().unwrap();
+				print!(
+					"returned code {}, output: {:?} ",
+					code,
 					out.stdout
 				);
+				if code == 11 {
+					print!("SEGFAULT");
+				}
+				println!();
 			}
 		}
 	}
