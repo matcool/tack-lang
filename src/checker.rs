@@ -252,8 +252,8 @@ impl TypeChecker<'_> {
 						"between return type and the expression".into(),
 					));
 				}
-				if ty.reference && !function.return_type.reference {
-					statement.children[0].replace_with_cast(ty.remove_reference());
+				if !function.return_type.reference {
+					statement.children[0].cast_if_reference();
 				}
 			}
 			StatementKind::Expression => {
@@ -270,9 +270,7 @@ impl TypeChecker<'_> {
 						self.format_type(ty)
 					)));
 				}
-				if ty.reference {
-					statement.children[0].replace_with_cast(ty.remove_reference());
-				}
+				statement.children[0].cast_if_reference();
 				self.check_scope(Rc::clone(inner_scope), function)?;
 			}
 			StatementKind::If(ref mut inner_scope) => {
@@ -286,9 +284,7 @@ impl TypeChecker<'_> {
 						ty
 					)));
 				}
-				if ty.reference {
-					statement.children[0].replace_with_cast(ty.remove_reference());
-				}
+				statement.children[0].cast_if_reference();
 				self.check_scope(Rc::clone(inner_scope), function)?;
 				if let Some(else_branch) = &mut statement.else_branch {
 					self.check_statement(else_branch.borrow_mut(), function, Rc::clone(&scope))?;
@@ -457,9 +453,7 @@ impl TypeChecker<'_> {
 					}
 				}
 
-				if inner.reference {
-					expression.children[0].replace_with_cast(inner.remove_reference());
-				}
+				expression.children[0].cast_if_reference();
 
 				expression.kind = ExpressionKind::Cast;
 
@@ -515,13 +509,11 @@ impl TypeChecker<'_> {
 					}
 				}
 
-				if op != &Operator::Assign && lhs.reference {
-					expression.children[0].replace_with_cast(lhs.remove_reference());
+				if op != &Operator::Assign {
+					expression.children[0].cast_if_reference();
 				}
 
-				if rhs.reference {
-					expression.children[1].replace_with_cast(rhs.remove_reference());
-				}
+				expression.children[1].cast_if_reference();
 
 				match op {
 					Operator::Equals | Operator::NotEquals => Ok(BUILTIN_TYPE_BOOL),
@@ -542,9 +534,7 @@ impl TypeChecker<'_> {
 					)));
 				}
 
-				if ty.reference {
-					expression.children[0].replace_with_cast(ty.remove_reference());
-				}
+				expression.children[0].cast_if_reference();
 
 				Ok(ty.remove_reference())
 			}
@@ -572,9 +562,7 @@ impl TypeChecker<'_> {
 					}
 					for (arg, exp) in func.arguments.iter().zip(expression.children.iter_mut()) {
 						let ty = self.check_expression(exp, function, Rc::clone(&scope))?;
-						if ty.reference {
-							exp.replace_with_cast(ty.remove_reference());
-						}
+						exp.cast_if_reference();
 
 						if ty != arg.ty {
 							return Err(TypeCheckerError::TypeMismatch(format!(
