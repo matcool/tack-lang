@@ -20,15 +20,18 @@ pub struct Compiler {
 	label_counter: Cell<i32>,
 }
 
+const POINTER_SIZE: usize = 4;
+
 impl Type {
 	pub fn size(&self, ast: &AST) -> usize {
 		match self {
 			Type::BuiltIn(built_in) => match built_in {
 				BuiltInType::I32 => 4,
 				BuiltInType::U8 => 1,
+				BuiltInType::UPtr => POINTER_SIZE,
 				BuiltInType::Bool => 1,
 			},
-			Type::Pointer(_) => 4, // TODO: change me
+			Type::Pointer(_) => POINTER_SIZE,
 			Type::Struct(stru) => stru
 				.fields
 				.iter()
@@ -117,6 +120,7 @@ impl Compiler {
 	}
 
 	fn compile_statement(&self, statement: &Statement, function: &Function) {
+		self.write("\n; Statement:");
 		match statement.kind {
 			StatementKind::Return => {
 				if let Some(expr) = statement.children.get(0) {
@@ -250,14 +254,21 @@ impl Compiler {
 			ExpressionKind::Cast => {
 				let child = &exp.children[0];
 				self.compile_expression(child, function);
-				if !exp.value_type.reference && child.value_type.reference {
+				let from = child.value_type;
+				let to = exp.value_type;
+				if from == to && !to.reference && from.reference {
 					self.write("mov eax, [eax]");
 				} else {
-					let from = self.ast.get_type(child.value_type);
-					let to = self.ast.get_type(exp.value_type);
+					let from = self.ast.get_type(from);
+					let to = self.ast.get_type(to);
 
 					match (from.as_ref(), to.as_ref()) {
-						(Type::BuiltIn(_), Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8)) => {}
+						(
+							Type::BuiltIn(_),
+							Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8 | BuiltInType::UPtr),
+						) => {}
+						(Type::Pointer(_), Type::BuiltIn(BuiltInType::UPtr)) => {}
+						(Type::BuiltIn(BuiltInType::UPtr), Type::Pointer(_)) => {}
 						(Type::BuiltIn(_), Type::BuiltIn(BuiltInType::Bool)) => {
 							self.write("cmp eax, 0");
 							self.write("setne al");
@@ -290,7 +301,8 @@ impl Compiler {
 			}
 			ExpressionKind::Operator(Operator::Dereference) => {
 				self.compile_expression(&exp.children[0], function);
-				self.write("mov eax, [eax]");
+				// since this evaluates to a reference,
+				// just keep it as a pointer
 			}
 			ref k => {
 				todo!("expression {:?}", k);

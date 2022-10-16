@@ -1,0 +1,11 @@
+fn main(): i32 {
+	let b: i32 = 10;
+	let c: i32* = &b;
+	*((c as uptr + 1 as uptr) as u8*) = 10 as u8;
+	// 0x0a0a
+	if (b == 2570) {
+		return 0;
+	} else {
+		return 2;
+	}
+}

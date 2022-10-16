@@ -5,6 +5,7 @@ use std::{cell::RefCell, rc::Rc};
 pub enum BuiltInType {
 	I32,
 	U8,
+	UPtr,
 	Bool,
 }
 
@@ -111,6 +112,7 @@ pub enum ExpressionKind {
 	Call(String),
 	Cast,
 	StructAccess(TypeRef, String),
+	ParsedCast(ParsedType),
 }
 
 #[derive(Debug)]
@@ -502,10 +504,17 @@ impl Parser {
 		match next.kind {
 			TokenKind::Operator(operator) if operator.precedence() == prec => {
 				self.next()?;
-				Ok(Expression::new(
-					ExpressionKind::Operator(operator),
-					vec![part, self.parse_expression_inner(prec)?],
-				))
+				if operator == Operator::As {
+					Ok(Expression::new(
+						ExpressionKind::ParsedCast(self.parse_type()?),
+						vec![part],
+					))
+				} else {
+					Ok(Expression::new(
+						ExpressionKind::Operator(operator),
+						vec![part, self.parse_expression_inner(prec)?],
+					))
+				}
 			}
 			_ => Ok(part),
 		}

@@ -38,6 +38,7 @@ impl Type {
 			Type::BuiltIn(builtin) => Some(match builtin {
 				BuiltInType::I32 => "i32".into(),
 				BuiltInType::U8 => "u8".into(),
+				BuiltInType::UPtr => "uptr".into(),
 				BuiltInType::Bool => "bool".into(),
 			}),
 			Type::Pointer(_) => None,
@@ -111,6 +112,12 @@ impl Expression {
 		// so this would actually be cast.children.push(self)
 		self.children.push(cast);
 	}
+
+	fn cast_if_reference(&mut self) {
+		if self.value_type.reference {
+			self.replace_with_cast(self.value_type.remove_reference());
+		}
+	}
 }
 
 #[derive(Debug)]
@@ -131,6 +138,7 @@ pub enum TypeCheckerError {
 const BUILTIN_TYPE_I32: TypeRef = TypeRef::new(0);
 const BUILTIN_TYPE_U8: TypeRef = TypeRef::new(1);
 const BUILTIN_TYPE_BOOL: TypeRef = TypeRef::new(2);
+const BUILTIN_TYPE_UPTR: TypeRef = TypeRef::new(3);
 
 pub struct TypeChecker<'a> {
 	parser: &'a Parser,
@@ -149,6 +157,7 @@ impl TypeChecker<'_> {
 		self.ast.add_type(Type::BuiltIn(BuiltInType::I32));
 		self.ast.add_type(Type::BuiltIn(BuiltInType::U8));
 		self.ast.add_type(Type::BuiltIn(BuiltInType::Bool));
+		self.ast.add_type(Type::BuiltIn(BuiltInType::UPtr));
 
 		for parsed_struct in &self.parser.parsed_structs {
 			let mut fields: Vec<Variable> = vec![];
@@ -210,6 +219,25 @@ impl TypeChecker<'_> {
 		Ok(())
 	}
 
+	fn format_type(&self, type_ref: TypeRef) -> String {
+		let mut name = String::from("??");
+		if !type_ref.is_unknown() {
+			let ty = self.ast.get_type(type_ref);
+			match ty.as_ref() {
+				Type::Pointer(inner) => name = format!("{}*", self.format_type(*inner)),
+				_ => {
+					if let Some(ty_name) = ty.name() {
+						name = ty_name;
+					}
+				}
+			}
+		}
+		if type_ref.reference {
+			name.push('&');
+		}
+		name
+	}
+
 	fn check_statement(
 		&mut self,
 		statement: &mut Statement,
@@ -238,8 +266,8 @@ impl TypeChecker<'_> {
 				let ty = self.check_expression(&mut statement.children[0], function, scope)?;
 				if ty != BUILTIN_TYPE_BOOL {
 					return Err(TypeCheckerError::TypeMismatch(format!(
-						"expected bool, got {:?}",
-						ty
+						"expected bool, got {}",
+						self.format_type(ty)
 					)));
 				}
 				if ty.reference {
@@ -396,48 +424,46 @@ impl TypeChecker<'_> {
 					unreachable!();
 				}
 			}
-			ExpressionKind::Operator(Operator::As) => {
-				let lhs = self.check_expression(
+			ExpressionKind::ParsedCast(parsed_type) => {
+				let inner = self.check_expression(
 					&mut expression.children[0],
 					function,
 					Rc::clone(&scope),
 				)?;
 
-				let type_name;
-				if let ExpressionKind::Variable(name) = &expression.children[1].kind {
-					type_name = name;
-				} else {
-					return Err(TypeCheckerError::InvalidOperand);
-				}
+				let cast_type_ref = self.check_parsed_type(parsed_type)?;
 
-				let rhs;
-				if let Some(ty) = self.ast.find_type_by_name(type_name) {
-					rhs = ty;
-				} else {
-					return Err(TypeCheckerError::UnknownType(format!("{}", type_name)));
-				}
+				let inner_type = self.ast.get_type(inner);
+				let cast_type = self.ast.get_type(cast_type_ref);
 
-				let lhs_type = self.ast.get_type(lhs);
-				let rhs_type = self.ast.get_type(rhs);
-
-				match (lhs_type.as_ref(), rhs_type.as_ref()) {
+				match (inner_type.as_ref(), cast_type.as_ref()) {
 					(
-						Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8 | BuiltInType::Bool),
-						Type::BuiltIn(BuiltInType::U8 | BuiltInType::I32),
+						Type::BuiltIn(
+							BuiltInType::I32
+							| BuiltInType::U8
+							| BuiltInType::Bool
+							| BuiltInType::UPtr,
+						),
+						Type::BuiltIn(BuiltInType::U8 | BuiltInType::I32 | BuiltInType::UPtr),
 					) => {}
 					(
 						Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8),
 						Type::BuiltIn(BuiltInType::Bool),
 					) => {}
+					(Type::Pointer(_), Type::BuiltIn(BuiltInType::UPtr)) => {}
+					(Type::BuiltIn(BuiltInType::UPtr), Type::Pointer(_)) => {}
 					_ => {
 						return Err(TypeCheckerError::InvalidCast);
 					}
 				}
 
-				expression.kind = ExpressionKind::Cast;
-				expression.children.pop();
+				if inner.reference {
+					expression.children[0].replace_with_cast(inner.remove_reference());
+				}
 
-				Ok(rhs)
+				expression.kind = ExpressionKind::Cast;
+
+				Ok(cast_type_ref)
 			}
 			ExpressionKind::Operator(op) if op.is_binary() => {
 				let lhs;
@@ -472,6 +498,21 @@ impl TypeChecker<'_> {
 						lhs.as_ref(),
 						rhs.as_ref()
 					)));
+				}
+
+				if matches!(
+					op,
+					Operator::Add | Operator::Sub | Operator::Divide | Operator::Multiply
+				) {
+					match self.ast.get_type(lhs).as_ref() {
+						Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8 | BuiltInType::UPtr) => {}
+						_ => {
+							return Err(TypeCheckerError::TypeMismatch(format!(
+								"arithmetic on {}",
+								self.format_type(lhs)
+							)));
+						}
+					}
 				}
 
 				if op != &Operator::Assign && lhs.reference {
@@ -562,7 +603,10 @@ impl TypeChecker<'_> {
 				let type_ref =
 					self.check_expression(&mut expression.children[0], function, scope)?;
 				match self.ast.get_type(type_ref).as_ref() {
-					Type::Pointer(inner) => Ok(inner.add_reference()),
+					Type::Pointer(inner) => {
+						expression.children[0].cast_if_reference();
+						Ok(inner.add_reference())
+					}
 					_ => Err(TypeCheckerError::InvalidDereference),
 				}
 			}
