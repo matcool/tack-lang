@@ -7,6 +7,7 @@ pub enum BuiltInType {
 	U8,
 	UPtr,
 	Bool,
+	Void,
 }
 
 #[derive(Debug)]
@@ -113,6 +114,7 @@ pub enum ExpressionKind {
 	Cast,
 	StructAccess(TypeRef, String),
 	ParsedCast(ParsedType),
+	AsmLiteral(String),
 }
 
 #[derive(Debug)]
@@ -454,12 +456,18 @@ impl Parser {
 			TokenKind::Identifier(name) => {
 				if let TokenKind::LeftParen = self.peek()?.kind {
 					self.next()?; // LeftParen
-					let mut exp = Expression::new(ExpressionKind::Call(name), vec![]);
-					self.parse_comma_list(|selfish: &mut Self| {
-						exp.children.push(selfish.parse_expression()?);
-						Ok(())
-					})?;
-					Ok(exp)
+					if name == "asm" {
+						let asm = expect_token!(self.next()?, TokenKind::StringLiteral(x), x)?;
+						expect_token!(self.next()?, TokenKind::RightParen)?;
+						Ok(Expression::new(ExpressionKind::AsmLiteral(asm), vec![]))
+					} else {
+						let mut exp = Expression::new(ExpressionKind::Call(name), vec![]);
+						self.parse_comma_list(|selfish: &mut Self| {
+							exp.children.push(selfish.parse_expression()?);
+							Ok(())
+						})?;
+						Ok(exp)
+					}
 				} else {
 					Ok(Expression::new(ExpressionKind::Variable(name), vec![]))
 				}

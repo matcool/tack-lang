@@ -1,0 +1,5 @@
+fn main(): i32 {
+	asm("mov eax, 10");
+	asm("ret");
+	return 0;
+}

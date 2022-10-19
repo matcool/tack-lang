@@ -40,6 +40,7 @@ impl Type {
 				BuiltInType::U8 => "u8".into(),
 				BuiltInType::UPtr => "uptr".into(),
 				BuiltInType::Bool => "bool".into(),
+				BuiltInType::Void => "void".into(),
 			}),
 			Type::Pointer(_) => None,
 			Type::Struct(str) => Some(str.name.clone()),
@@ -139,6 +140,7 @@ const BUILTIN_TYPE_I32: TypeRef = TypeRef::new(0);
 const BUILTIN_TYPE_U8: TypeRef = TypeRef::new(1);
 const BUILTIN_TYPE_BOOL: TypeRef = TypeRef::new(2);
 const BUILTIN_TYPE_UPTR: TypeRef = TypeRef::new(3);
+const BUILTIN_TYPE_VOID: TypeRef = TypeRef::new(4);
 
 pub struct TypeChecker<'a> {
 	parser: &'a Parser,
@@ -158,6 +160,7 @@ impl TypeChecker<'_> {
 		self.ast.add_type(Type::BuiltIn(BuiltInType::U8));
 		self.ast.add_type(Type::BuiltIn(BuiltInType::Bool));
 		self.ast.add_type(Type::BuiltIn(BuiltInType::UPtr));
+		self.ast.add_type(Type::BuiltIn(BuiltInType::Void));
 
 		for parsed_struct in &self.parser.parsed_structs {
 			let mut fields: Vec<Variable> = vec![];
@@ -605,6 +608,9 @@ impl TypeChecker<'_> {
 				);
 				expression.replace_with(new);
 				self.check_expression(expression, function, scope)
+			}
+			ExpressionKind::AsmLiteral(_) => {
+				Ok(BUILTIN_TYPE_VOID)
 			}
 			k => {
 				todo!("{:?}", k)

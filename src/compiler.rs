@@ -30,6 +30,7 @@ impl Type {
 				BuiltInType::U8 => 1,
 				BuiltInType::UPtr => POINTER_SIZE,
 				BuiltInType::Bool => 1,
+				BuiltInType::Void => 0,
 			},
 			Type::Pointer(_) => POINTER_SIZE,
 			Type::Struct(stru) => stru
@@ -303,6 +304,9 @@ impl Compiler {
 				self.compile_expression(&exp.children[0], function);
 				// since this evaluates to a reference,
 				// just keep it as a pointer
+			}
+			ExpressionKind::AsmLiteral(ref str) => {
+				self.write(str);
 			}
 			ref k => {
 				todo!("expression {:?}", k);

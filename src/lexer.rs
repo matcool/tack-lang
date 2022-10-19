@@ -46,7 +46,7 @@ pub enum TokenKind {
 	RightBracket,
 	TypeIndicator,
 	Comma,
-	// TODO: string
+	StringLiteral(String),
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +146,11 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 					number.insert(0, ch);
 					// TODO: make this function return result
 					TokenKind::Number(number.as_str().parse().unwrap())
+				}
+				'"' => {
+					let str: String = self.iterator.peeking_take_while(|c| *c != '"').collect();
+					self.next();
+					TokenKind::StringLiteral(str)
 				}
 				ch => {
 					let mut identifer: String = self
