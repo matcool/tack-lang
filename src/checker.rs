@@ -487,6 +487,15 @@ impl TypeChecker<'_> {
 					rhs = self.check_expression(&mut expression.children[1], function, scope)?;
 				}
 
+				if matches!(op, Operator::And | Operator::Or) {
+					if lhs != BUILTIN_TYPE_BOOL {
+						return Err(TypeCheckerError::TypeMismatch("lhs must be bool".into()));
+					}
+					if rhs != BUILTIN_TYPE_BOOL {
+						return Err(TypeCheckerError::TypeMismatch("rhs must be bool".into()));
+					}
+				}
+
 				if lhs != rhs {
 					let lhs = self.ast.get_type(lhs);
 					let rhs = self.ast.get_type(rhs);
@@ -609,9 +618,7 @@ impl TypeChecker<'_> {
 				expression.replace_with(new);
 				self.check_expression(expression, function, scope)
 			}
-			ExpressionKind::AsmLiteral(_) => {
-				Ok(BUILTIN_TYPE_VOID)
-			}
+			ExpressionKind::AsmLiteral(_) => Ok(BUILTIN_TYPE_VOID),
 			k => {
 				todo!("{:?}", k)
 			}

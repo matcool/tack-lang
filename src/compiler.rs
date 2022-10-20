@@ -234,13 +234,32 @@ impl Compiler {
 					}
 				}
 			}
+			ExpressionKind::Operator(op @ (Operator::And | Operator::Or)) => {
+				let skip_label = format!("_{}", self.get_label_id());
+
+				self.compile_expression(&exp.children[0], function);
+				if op == Operator::And {
+					self.write("cmp al, 0");
+				} else {
+					self.write("cmp al, 1");
+				}
+				self.write(format!("je {skip_label}"));
+				self.compile_expression(&exp.children[1], function);
+				self.write(format!("{skip_label}:"));
+			}
 			ExpressionKind::Operator(op) if op.is_binary() => {
 				self.compile_expression(&exp.children[0], function);
 				self.write("push eax");
 				self.compile_expression(&exp.children[1], function);
 				self.write("pop ecx");
+				// ecx is lhs
+				// eax is rhs
 				match op {
 					Operator::Add => self.write("add eax, ecx"),
+					Operator::Sub => {
+						self.write("sub ecx, eax");
+						self.write("mov eax, ecx");
+					}
 					Operator::Equals | Operator::NotEquals => {
 						self.write("cmp eax, ecx");
 						if op == Operator::Equals {
@@ -248,7 +267,11 @@ impl Compiler {
 						} else {
 							self.write("setne al");
 						}
-					},
+					}
+					Operator::Multiply => {
+						// edx:eax = eax * ecx
+						self.write("imul ecx");
+					}
 					Operator::Divide | Operator::Mod => {
 						self.write("xchg ecx, eax");
 						self.write("mov edx, 0");
@@ -256,10 +279,6 @@ impl Compiler {
 						if op == Operator::Mod {
 							self.write("mov eax, edx");
 						}
-					},
-					Operator::Sub => {
-						self.write("sub ecx, eax");
-						self.write("mov eax, ecx");
 					}
 					_ => todo!("unhandled {:?}", op),
 				}

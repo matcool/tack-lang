@@ -27,6 +27,10 @@ pub enum Operator {
 	Dot,
 	As,
 	Mod,
+	Or,
+	BitOr,
+	GreaterThan, // TODO:
+	LessThan,
 	// unary ops
 	Not,
 	Negate,
@@ -126,6 +130,14 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 						TokenKind::Operator(Operator::And)
 					} else {
 						TokenKind::Operator(Operator::BitAnd)
+					}
+				}
+				'|' => {
+					if self.peek()? == '|' {
+						self.next()?;
+						TokenKind::Operator(Operator::Or)
+					} else {
+						TokenKind::Operator(Operator::BitOr)
 					}
 				}
 				'/' => {

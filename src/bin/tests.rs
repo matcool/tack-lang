@@ -41,11 +41,7 @@ fn main() {
 					.output()
 					.unwrap();
 				let code = out.status.code().unwrap();
-				print!(
-					"returned code {}, output: {:?} ",
-					code,
-					out.stdout
-				);
+				print!("returned code {}, output: {:?} ", code, out.stdout);
 				if code == 11 {
 					print!("SEGFAULT");
 				}
