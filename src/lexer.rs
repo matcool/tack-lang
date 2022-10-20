@@ -26,6 +26,7 @@ pub enum Operator {
 	BitAnd,
 	Dot,
 	As,
+	Mod,
 	// unary ops
 	Not,
 	Negate,
@@ -102,6 +103,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 				'+' => TokenKind::Operator(Operator::Add),
 				'-' => TokenKind::Operator(Operator::Sub),
 				'*' => TokenKind::Operator(Operator::Multiply),
+				'%' => TokenKind::Operator(Operator::Mod),
 				'=' => {
 					if self.peek()? == '=' {
 						self.next()?;

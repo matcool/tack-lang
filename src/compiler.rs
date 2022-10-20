@@ -248,6 +248,18 @@ impl Compiler {
 						} else {
 							self.write("setne al");
 						}
+					},
+					Operator::Divide | Operator::Mod => {
+						self.write("xchg ecx, eax");
+						self.write("mov edx, 0");
+						self.write("idiv ecx");
+						if op == Operator::Mod {
+							self.write("mov eax, edx");
+						}
+					},
+					Operator::Sub => {
+						self.write("sub ecx, eax");
+						self.write("mov eax, ecx");
 					}
 					_ => todo!("unhandled {:?}", op),
 				}

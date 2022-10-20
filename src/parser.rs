@@ -73,7 +73,7 @@ impl Operator {
 			Operator::Assign => 0,
 			Operator::Equals | Operator::NotEquals => 1,
 			Operator::Add | Operator::Sub => 2,
-			Operator::Multiply | Operator::Divide => 3,
+			Operator::Multiply | Operator::Divide | Operator::Mod => 3,
 			Operator::As => 4,
 			Operator::Dot => 5,
 			_ => 9999,
