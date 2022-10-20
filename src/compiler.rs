@@ -260,12 +260,14 @@ impl Compiler {
 						self.write("sub ecx, eax");
 						self.write("mov eax, ecx");
 					}
-					Operator::Equals | Operator::NotEquals => {
-						self.write("cmp eax, ecx");
-						if op == Operator::Equals {
-							self.write("sete al");
-						} else {
-							self.write("setne al");
+					Operator::Equals | Operator::NotEquals | Operator::LessThan | Operator::GreaterThan => {
+						self.write("cmp ecx, eax");
+						match op {
+							Operator::Equals => self.write("sete al"),
+							Operator::NotEquals => self.write("setne al"),
+							Operator::LessThan => self.write("setl al"),
+							Operator::GreaterThan => self.write("setg al"),
+							_ => unreachable!()
 						}
 					}
 					Operator::Multiply => {

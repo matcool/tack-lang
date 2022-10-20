@@ -67,17 +67,18 @@ pub struct ParsedStruct {
 }
 
 impl Operator {
-	const MAX_PRECEDENCE: i32 = 7;
+	const MAX_PRECEDENCE: i32 = 8;
 	fn precedence(&self) -> i32 {
 		match self {
 			Operator::Assign => 0,
 			Operator::Or => 1,
 			Operator::And => 2,
 			Operator::Equals | Operator::NotEquals => 3,
-			Operator::Add | Operator::Sub => 4,
-			Operator::Multiply | Operator::Divide | Operator::Mod => 5,
-			Operator::As => 6,
-			Operator::Dot => 7,
+			Operator::GreaterThan | Operator::LessThan => 4,
+			Operator::Add | Operator::Sub => 5,
+			Operator::Multiply | Operator::Divide | Operator::Mod => 6,
+			Operator::As => 7,
+			Operator::Dot => 8,
 			_ => 9999,
 		}
 	}

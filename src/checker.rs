@@ -528,7 +528,7 @@ impl TypeChecker<'_> {
 				expression.children[1].cast_if_reference();
 
 				match op {
-					Operator::Equals | Operator::NotEquals => Ok(BUILTIN_TYPE_BOOL),
+					Operator::Equals | Operator::NotEquals | Operator::GreaterThan | Operator::LessThan => Ok(BUILTIN_TYPE_BOOL),
 					_ => Ok(lhs.remove_reference()),
 				}
 			}

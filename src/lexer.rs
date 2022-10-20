@@ -108,6 +108,8 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 				'-' => TokenKind::Operator(Operator::Sub),
 				'*' => TokenKind::Operator(Operator::Multiply),
 				'%' => TokenKind::Operator(Operator::Mod),
+				'>' => TokenKind::Operator(Operator::GreaterThan),
+				'<' => TokenKind::Operator(Operator::LessThan),
 				'=' => {
 					if self.peek()? == '=' {
 						self.next()?;
