@@ -154,14 +154,24 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 					}
 				}
 				'0'..='9' => {
-					let mut number: String = self
-						.iterator
-						.peeking_take_while(|c| c.is_ascii_digit())
-						.collect();
-					// scary...
-					number.insert(0, ch);
-					// TODO: make this function return result
-					TokenKind::Number(number.as_str().parse().unwrap())
+					if ch == '0' && self.iterator.peek().map(|c| *c == 'x').unwrap_or(false) {
+						self.iterator.next();
+						let number: String = self
+							.iterator
+							.peeking_take_while(|c| c.is_ascii_hexdigit())
+							.collect();
+
+						TokenKind::Number(i32::from_str_radix(number.as_str(), 16).unwrap())
+					} else {
+						let mut number: String = self
+							.iterator
+							.peeking_take_while(|c| c.is_ascii_digit())
+							.collect();
+						// scary...
+						number.insert(0, ch);
+						// TODO: make this function return result
+						TokenKind::Number(number.as_str().parse().unwrap())
+					}
 				}
 				'"' => {
 					let str: String = self.iterator.peeking_take_while(|c| *c != '"').collect();
