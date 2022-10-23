@@ -1,4 +1,4 @@
-use itertools::Itertools;
+use itertools::{Itertools, PeekingNext};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Keyword {
@@ -55,12 +55,21 @@ pub enum TokenKind {
 }
 
 #[derive(Debug, Clone)]
+pub struct Span {
+	pub line: i32,
+	pub column: i32,
+}
+
+#[derive(Debug, Clone)]
 pub struct Token {
 	pub kind: TokenKind,
+	pub span: Span,
 }
 
 pub struct Lexer<I: Iterator<Item = char>> {
 	iterator: std::iter::Peekable<I>,
+	line: i32,
+	column: i32,
 }
 
 pub struct LexerIterator<'a, I: Iterator<Item = char>> {
@@ -77,7 +86,7 @@ impl<'a, I: Iterator<Item = char>> Iterator for LexerIterator<'a, I> {
 
 impl<I: Iterator<Item = char>> Lexer<I> {
 	pub fn new(iterator: std::iter::Peekable<I>) -> Lexer<I> {
-		Lexer { iterator }
+		Lexer { iterator, line: 1, column: 1 }
 	}
 
 	fn peek(&mut self) -> Option<char> {
@@ -85,7 +94,18 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 	}
 
 	fn next(&mut self) -> Option<char> {
-		self.iterator.next()
+		let c = self.iterator.next();
+		if let Some(c) = c {
+			if c == '\n' {
+				self.column = 1;
+				self.line += 1;
+			} else if c == '\t' {
+				self.column += 4;
+			} else {
+				self.column += 1;
+			}
+		}
+		c
 	}
 
 	pub fn get_token(&mut self) -> Option<Token> {
@@ -95,6 +115,10 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 			ch.is_whitespace()
 		} {}
 		let token = Token {
+			span: Span {
+				line: self.line,
+				column: self.column - 1, // from the self.next() in the while loop before
+			},
 			kind: match ch {
 				';' => TokenKind::Semicolon,
 				'(' => TokenKind::LeftParen,
@@ -144,8 +168,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 				}
 				'/' => {
 					if self.peek()? == '/' {
-						(&mut self.iterator)
-							.take_while(|c| *c != '\n')
+						self.take_while(|c| *c != '\n')
 							.for_each(drop);
 						// use recursion to skip chars inside the match
 						return self.get_token();
@@ -154,17 +177,15 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 					}
 				}
 				'0'..='9' => {
-					if ch == '0' && self.iterator.peek().map(|c| *c == 'x').unwrap_or(false) {
-						self.iterator.next();
+					if ch == '0' && self.peek().map(|c| c == 'x').unwrap_or(false) {
+						self.next();
 						let number: String = self
-							.iterator
 							.peeking_take_while(|c| c.is_ascii_hexdigit())
 							.collect();
 
 						TokenKind::Number(i32::from_str_radix(number.as_str(), 16).unwrap())
 					} else {
 						let mut number: String = self
-							.iterator
 							.peeking_take_while(|c| c.is_ascii_digit())
 							.collect();
 						// scary...
@@ -174,13 +195,12 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 					}
 				}
 				'"' => {
-					let str: String = self.iterator.peeking_take_while(|c| *c != '"').collect();
+					let str: String = self.peeking_take_while(|c| *c != '"').collect();
 					self.next();
 					TokenKind::StringLiteral(str)
 				}
 				ch => {
 					let mut identifer: String = self
-						.iterator
 						.peeking_take_while(|c| c.is_alphanumeric() || c == &'_')
 						.collect();
 					// not very elegant :(
@@ -206,5 +226,24 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 
 	pub fn iter(&mut self) -> LexerIterator<I> {
 		LexerIterator { lexer: self }
+	}
+}
+
+impl<I: Iterator<Item = char>> Iterator for Lexer<I> {
+	type Item = char;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		self.next()
+	}
+}
+
+impl<I: Iterator<Item = char>> PeekingNext for Lexer<I> {
+	fn peeking_next<F: FnOnce(&Self::Item) -> bool>(&mut self, accept: F) -> Option<Self::Item> {
+		if let Some(x) = self.peek() {
+			if accept(&x) {
+				return self.next();
+			}
+		}
+		None
 	}
 }
