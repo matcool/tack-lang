@@ -401,6 +401,7 @@ impl TypeChecker<'_> {
 						ExpressionKind::Operator(Operator::Dereference),
 						vec![first_child],
 					);
+					deref.children[0].cast_if_reference();
 					deref.value_type = struct_type_ref.unwrap().add_reference();
 					expression.children.push(deref);
 				} else {
