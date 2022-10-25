@@ -1,4 +1,4 @@
-use crate::lexer::{Keyword, Operator, Token, TokenKind};
+use crate::lexer::{Keyword, Operator, Token, TokenKind, Span};
 use std::{cell::RefCell, rc::Rc};
 
 #[derive(Debug, PartialEq)]
@@ -125,6 +125,7 @@ pub struct Expression {
 	pub kind: ExpressionKind,
 	pub children: Vec<Expression>,
 	pub value_type: TypeRef,
+	pub span: Span,
 }
 
 impl Expression {
@@ -133,6 +134,7 @@ impl Expression {
 			kind,
 			children,
 			value_type: TypeRef::unknown(),
+			span: Default::default()
 		}
 	}
 }
@@ -506,6 +508,14 @@ impl Parser {
 	}
 
 	fn parse_expression_inner(&mut self, prec: i32) -> Result<Expression, ParserError> {
+		let span = self.tokens.peek().map(|x| x.span.clone()).unwrap_or_default();
+		self.parse_expression_inner_inner(prec).map(|mut exp| {
+			exp.span = span;
+			exp
+		})
+	}
+
+	fn parse_expression_inner_inner(&mut self, prec: i32) -> Result<Expression, ParserError> {
 		// FIXME: x.y.z gets parsed as x.(y.z) when it should be (x.y).z
 		if prec > Operator::MAX_PRECEDENCE {
 			return self.parse_expression_primary();

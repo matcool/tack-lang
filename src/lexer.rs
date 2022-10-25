@@ -60,6 +60,15 @@ pub struct Span {
 	pub column: i32,
 }
 
+impl Default for Span {
+	fn default() -> Self {
+		Self {
+			line: 0,
+			column: 0,
+		}
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct Token {
 	pub kind: TokenKind,
