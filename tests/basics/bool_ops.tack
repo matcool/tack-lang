@@ -1,0 +1,10 @@
+fn main(): i32 {
+	let a: i32 = 12;
+	let b: i32 = 34;
+
+	if a == 12 || b == 30 {
+		return 12;
+	} else {
+		return 0;
+	}
+}
