@@ -102,7 +102,7 @@ impl Expression {
 
 	fn replace_with_children(&mut self, mut new: Expression) {
 		std::mem::swap(self, &mut new);
-		self.children.extend(new.children.drain(..));
+		self.children.append(&mut new.children);
 	}
 
 	fn replace_with_cast(&mut self, typ: TypeRef) {
@@ -529,7 +529,10 @@ impl TypeChecker<'_> {
 				expression.children[1].cast_if_reference();
 
 				match op {
-					Operator::Equals | Operator::NotEquals | Operator::GreaterThan | Operator::LessThan => Ok(BUILTIN_TYPE_BOOL),
+					Operator::Equals
+					| Operator::NotEquals
+					| Operator::GreaterThan
+					| Operator::LessThan => Ok(BUILTIN_TYPE_BOOL),
 					_ => Ok(lhs.remove_reference()),
 				}
 			}

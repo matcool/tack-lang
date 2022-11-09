@@ -62,10 +62,7 @@ pub struct Span {
 
 impl Default for Span {
 	fn default() -> Self {
-		Self {
-			line: 0,
-			column: 0,
-		}
+		Self { line: 0, column: 0 }
 	}
 }
 
@@ -95,7 +92,11 @@ impl<'a, I: Iterator<Item = char>> Iterator for LexerIterator<'a, I> {
 
 impl<I: Iterator<Item = char>> Lexer<I> {
 	pub fn new(iterator: std::iter::Peekable<I>) -> Lexer<I> {
-		Lexer { iterator, line: 1, column: 1 }
+		Lexer {
+			iterator,
+			line: 1,
+			column: 1,
+		}
 	}
 
 	fn peek(&mut self) -> Option<char> {
@@ -177,8 +178,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 				}
 				'/' => {
 					if self.peek()? == '/' {
-						self.take_while(|c| *c != '\n')
-							.for_each(drop);
+						self.take_while(|c| *c != '\n').for_each(drop);
 						// use recursion to skip chars inside the match
 						return self.get_token();
 					} else {
@@ -188,15 +188,13 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 				'0'..='9' => {
 					if ch == '0' && self.peek().map(|c| c == 'x').unwrap_or(false) {
 						self.next();
-						let number: String = self
-							.peeking_take_while(|c| c.is_ascii_hexdigit())
-							.collect();
+						let number: String =
+							self.peeking_take_while(|c| c.is_ascii_hexdigit()).collect();
 
 						TokenKind::Number(i32::from_str_radix(number.as_str(), 16).unwrap())
 					} else {
-						let mut number: String = self
-							.peeking_take_while(|c| c.is_ascii_digit())
-							.collect();
+						let mut number: String =
+							self.peeking_take_while(|c| c.is_ascii_digit()).collect();
 						// scary...
 						number.insert(0, ch);
 						// TODO: make this function return result
