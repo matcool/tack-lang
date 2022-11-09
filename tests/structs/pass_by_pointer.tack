@@ -1,3 +1,5 @@
+// returns 33
+
 struct OptionalI32 {
 	value: i32;
 	has_value: bool;

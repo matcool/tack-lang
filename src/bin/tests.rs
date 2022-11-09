@@ -1,5 +1,8 @@
 use path_slash::PathBufExt;
-use std::process::Command;
+use std::{
+	io::{BufRead, BufReader},
+	process::Command,
+};
 
 use tack::run::run;
 
@@ -22,12 +25,31 @@ fn main() {
 					"Unknown file in test folder: {:?}",
 					file.file_name()
 				);
+
 				// oops this keeps the .tack file ext.. oh well
 				let binary_path = build_path.join(format!(
 					"{}__{}",
 					folder.file_name().to_str().unwrap(),
 					file.file_name().to_str().unwrap()
 				));
+
+				let mut expected_code = None;
+				{
+					let file = std::fs::File::open(file.path()).unwrap();
+					for line in BufReader::new(file).lines() {
+						let line = line.unwrap();
+						if let Some((_, comment)) = line.split_once("// ") {
+							let (key, value) = comment.split_once(' ').unwrap();
+							if key == "returns" {
+								expected_code = Some(value.parse::<i32>().unwrap());
+							} else {
+								break;
+							}
+						} else {
+							break;
+						}
+					}
+				}
 
 				run(
 					file.path(),
@@ -41,9 +63,18 @@ fn main() {
 					.output()
 					.unwrap();
 				let code = out.status.code().unwrap();
-				print!("returned code {}, output: {:?} ", code, out.stdout);
+				print!("returned code {code} ");
+				if !out.stdout.is_empty() {
+					print!(" output: {:?} ", out.stdout);
+				}
 				if code == 11 {
 					print!("SEGFAULT");
+				} else if let Some(expected_code) = expected_code {
+					if expected_code == code {
+						print!("OK");
+					} else {
+						print!("FAIL (expected {expected_code})");
+					}
 				}
 				println!();
 			}

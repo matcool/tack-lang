@@ -1,3 +1,5 @@
+// returns 42
+
 // Hello there!
 fn main(): i32 {
 	// return 42

@@ -1,3 +1,5 @@
+// returns 21
+
 fn main(): i32 {
 	let a: i32 = 12;
 	let b: i32* = &a;
