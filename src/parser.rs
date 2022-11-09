@@ -1,4 +1,4 @@
-use crate::lexer::{Keyword, Operator, Token, TokenKind, Span};
+use crate::lexer::{Keyword, Operator, Span, Token, TokenKind};
 use std::{cell::RefCell, rc::Rc};
 
 #[derive(Debug, PartialEq)]
@@ -134,7 +134,7 @@ impl Expression {
 			kind,
 			children,
 			value_type: TypeRef::unknown(),
-			span: Default::default()
+			span: Default::default(),
 		}
 	}
 }
@@ -233,19 +233,32 @@ pub enum ParserError {
 	MissingToken, // for when the iterator reaches the end, def need a better name
 }
 
+macro_rules! error_at_token {
+	($token:expr, $expected:expr) => {{
+		let token = $token;
+		let expected = $expected;
+		eprintln!("Parser error {}:{}", file!(), line!());
+		eprintln!(
+			"Unexpected token at file.tack:{}:{}. Expected {expected} but got {:?}",
+			token.span.line, token.span.column, token.kind
+		);
+		std::process::exit(1);
+	}};
+}
+
 macro_rules! expect_token {
 	($token:expr, $pattern:pat, $value:ident) => {{
 		let token = $token;
 		match token.kind {
 			$pattern => Ok($value),
-			_ => Err(ParserError::InvalidToken(token)),
+			_ => error_at_token!(token, stringify!($pattern)),
 		}
 	}};
 	($token:expr, $pattern:pat) => {{
 		let token = $token;
 		match token.kind {
 			$pattern => Ok(token),
-			_ => Err(ParserError::InvalidToken(token)),
+			_ => error_at_token!(token, stringify!($pattern)),
 		}
 	}};
 }
@@ -261,10 +274,7 @@ impl Parser {
 
 	fn next(&mut self) -> Result<Token, ParserError> {
 		match self.tokens.next() {
-			Some(x) => {
-				// println!("Parser::next is {:?}", x);
-				Ok(x)
-			}
+			Some(x) => Ok(x),
 			None => Err(ParserError::MissingToken),
 		}
 	}
@@ -300,7 +310,7 @@ impl Parser {
 							function.parsed_return_type = ParsedType::Name("void".to_string());
 						}
 						_ => {
-							return Err(ParserError::InvalidToken(self.next()?));
+							error_at_token!(self.next()?, "function return type");
 						}
 					}
 
@@ -328,7 +338,7 @@ impl Parser {
 					self.parsed_structs.push(parsed_struct);
 				}
 				_ => {
-					return Err(ParserError::InvalidToken(token));
+					error_at_token!(token, "unexpected token outside function, great error btw");
 				}
 			}
 		}
@@ -354,7 +364,7 @@ impl Parser {
 					break;
 				}
 				_ => {
-					return Err(ParserError::InvalidToken(next));
+					error_at_token!(next, "comma or right parenthesis");
 				}
 			}
 		}
@@ -430,7 +440,7 @@ impl Parser {
 							stmt.else_branch = Some(Box::new(self.parse_statement()?));
 						}
 						_ => {
-							return Err(ParserError::InvalidToken(self.next()?));
+							error_at_token!(self.next()?, "if statement or block");
 						}
 					}
 				}
@@ -508,7 +518,11 @@ impl Parser {
 	}
 
 	fn parse_expression_inner(&mut self, prec: i32) -> Result<Expression, ParserError> {
-		let span = self.tokens.peek().map(|x| x.span.clone()).unwrap_or_default();
+		let span = self
+			.tokens
+			.peek()
+			.map(|x| x.span.clone())
+			.unwrap_or_default();
 		self.parse_expression_inner_inner(prec).map(|mut exp| {
 			exp.span = span;
 			exp
