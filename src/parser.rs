@@ -8,6 +8,7 @@ pub enum BuiltInType {
 	UPtr,
 	Bool,
 	Void,
+	IntLiteral,
 }
 
 #[derive(Debug)]

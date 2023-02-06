@@ -31,6 +31,7 @@ impl Type {
 				BuiltInType::UPtr => POINTER_SIZE,
 				BuiltInType::Bool => 1,
 				BuiltInType::Void => 0,
+				BuiltInType::IntLiteral => unreachable!("this shouldnt be called"),
 			},
 			Type::Pointer(_) => POINTER_SIZE,
 			Type::Struct(stru) => stru

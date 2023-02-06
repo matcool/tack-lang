@@ -1,8 +1,8 @@
 // returns 12
 
 fn main(): i32 {
-	let a: u8 = 10 as u8;
-	if (a + (2 as u8)) == (12 as u8) {
+	let a: u8 = 10;
+	if a + 2 == 12 {
 		return 12;
 	} else {
 		return 10;

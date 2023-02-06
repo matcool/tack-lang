@@ -1,7 +1,8 @@
 use path_slash::PathBufExt;
 use std::{
 	io::{BufRead, BufReader},
-	process::Command, path::PathBuf,
+	path::PathBuf,
+	process::Command,
 };
 
 use tack::run::run;
@@ -49,16 +50,17 @@ fn run_test(path: PathBuf, binary_path: PathBuf) {
 			print!("FAIL (expected {expected_code})");
 		}
 	}
-
 }
-
 
 fn main() {
 	let build_path = std::path::Path::new("tests/build");
 	// ignore if folder already exists
 	let _ = std::fs::create_dir(build_path);
-	if let Some(path) = std::env::args().skip(1).next() {
-		run_test(std::path::Path::new("tests").join(path), build_path.join("foo"));
+	if let Some(path) = std::env::args().nth(1) {
+		run_test(
+			std::path::Path::new("tests").join(path),
+			build_path.join("foo"),
+		);
 	} else {
 		for folder in std::fs::read_dir("tests").unwrap() {
 			let folder = folder.unwrap();
@@ -71,13 +73,13 @@ fn main() {
 						println!("Skipping unknown file in test folder");
 						continue;
 					}
-	
+
 					let binary_path = build_path.join(format!(
 						"{}__{}",
 						folder.file_name().to_str().unwrap(),
 						file_name.strip_suffix(".tack").unwrap()
 					));
-	
+
 					run_test(file.path(), binary_path);
 					println!();
 				}

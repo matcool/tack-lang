@@ -41,6 +41,7 @@ impl Type {
 				BuiltInType::UPtr => "uptr".into(),
 				BuiltInType::Bool => "bool".into(),
 				BuiltInType::Void => "void".into(),
+				BuiltInType::IntLiteral => "<int>".into(),
 			}),
 			Type::Pointer(_) => None,
 			Type::Struct(str) => Some(str.name.clone()),
@@ -141,6 +142,7 @@ const BUILTIN_TYPE_U8: TypeRef = TypeRef::new(1);
 const BUILTIN_TYPE_BOOL: TypeRef = TypeRef::new(2);
 const BUILTIN_TYPE_UPTR: TypeRef = TypeRef::new(3);
 const BUILTIN_TYPE_VOID: TypeRef = TypeRef::new(4);
+const BUILTIN_TYPE_INT_LITERAL: TypeRef = TypeRef::new(5);
 
 pub struct TypeChecker<'a> {
 	parser: &'a Parser,
@@ -161,6 +163,7 @@ impl TypeChecker<'_> {
 		self.ast.add_type(Type::BuiltIn(BuiltInType::Bool));
 		self.ast.add_type(Type::BuiltIn(BuiltInType::UPtr));
 		self.ast.add_type(Type::BuiltIn(BuiltInType::Void));
+		self.ast.add_type(Type::BuiltIn(BuiltInType::IntLiteral));
 
 		for parsed_struct in &self.parser.parsed_structs {
 			let mut fields: Vec<Variable> = vec![];
@@ -249,7 +252,11 @@ impl TypeChecker<'_> {
 	) -> Result<(), TypeCheckerError> {
 		match statement.kind {
 			StatementKind::Return => {
-				let ty = self.check_expression(&mut statement.children[0], function, scope)?;
+				self.check_expression(&mut statement.children[0], function, scope)?;
+
+				let ty =
+					self.promote_int_literal_into(&mut statement.children[0], function.return_type);
+
 				if ty != function.return_type {
 					return Err(TypeCheckerError::TypeMismatch(
 						"between return type and the expression".into(),
@@ -325,6 +332,22 @@ impl TypeChecker<'_> {
 			.cloned()
 	}
 
+	fn promote_int_literal_into(&self, expression: &mut Expression, type_ref: TypeRef) -> TypeRef {
+		if expression.value_type != BUILTIN_TYPE_INT_LITERAL {
+			return expression.value_type;
+		}
+		let target_type = self.ast.get_type(type_ref);
+		if let Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8 | BuiltInType::UPtr) = target_type.as_ref() {
+			expression.value_type = type_ref.remove_reference();
+			if let ExpressionKind::Operator(_) = expression.kind {
+				for child in &mut expression.children {
+					self.promote_int_literal_into(child, type_ref);
+				}
+			}
+		}
+		expression.value_type
+	}
+
 	fn check_expression(
 		&mut self,
 		expression: &mut Expression,
@@ -342,7 +365,7 @@ impl TypeChecker<'_> {
 		scope: Rc<Scope>,
 	) -> Result<TypeRef, TypeCheckerError> {
 		match &expression.kind {
-			ExpressionKind::NumberLiteral(_) => Ok(BUILTIN_TYPE_I32),
+			ExpressionKind::NumberLiteral(_) => Ok(BUILTIN_TYPE_INT_LITERAL),
 			ExpressionKind::BoolLiteral(_) => Ok(BUILTIN_TYPE_BOOL),
 			ExpressionKind::Operator(Operator::Dot) => {
 				let lhs = self.check_expression(
@@ -452,6 +475,15 @@ impl TypeChecker<'_> {
 					) => {}
 					(Type::Pointer(_), Type::BuiltIn(BuiltInType::UPtr)) => {}
 					(Type::BuiltIn(BuiltInType::UPtr), Type::Pointer(_)) => {}
+					(
+						Type::BuiltIn(BuiltInType::IntLiteral),
+						Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8 | BuiltInType::UPtr),
+					) => {
+						let mut child = expression.children.pop().unwrap();
+						child.value_type = cast_type_ref;
+						expression.replace_with(child);
+						return Ok(cast_type_ref);
+					}
 					_ => {
 						return Err(TypeCheckerError::InvalidCast);
 					}
@@ -488,6 +520,9 @@ impl TypeChecker<'_> {
 					rhs = self.check_expression(&mut expression.children[1], function, scope)?;
 				}
 
+				let rhs = self.promote_int_literal_into(&mut expression.children[1], lhs);
+				let lhs = self.promote_int_literal_into(&mut expression.children[1], rhs);
+
 				if matches!(op, Operator::And | Operator::Or) {
 					if lhs != BUILTIN_TYPE_BOOL {
 						return Err(TypeCheckerError::TypeMismatch("lhs must be bool".into()));
@@ -512,7 +547,12 @@ impl TypeChecker<'_> {
 					Operator::Add | Operator::Sub | Operator::Divide | Operator::Multiply
 				) {
 					match self.ast.get_type(lhs).as_ref() {
-						Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8 | BuiltInType::UPtr) => {}
+						Type::BuiltIn(
+							BuiltInType::I32
+							| BuiltInType::U8
+							| BuiltInType::UPtr
+							| BuiltInType::IntLiteral,
+						) => {}
 						_ => {
 							return Err(TypeCheckerError::TypeMismatch(format!(
 								"arithmetic on {}",
@@ -577,13 +617,16 @@ impl TypeChecker<'_> {
 						return Err(TypeCheckerError::ArgumentCountMismatch);
 					}
 					for (arg, exp) in func.arguments.iter().zip(expression.children.iter_mut()) {
-						let ty = self.check_expression(exp, function, Rc::clone(&scope))?;
+						self.check_expression(exp, function, Rc::clone(&scope))?;
 						exp.cast_if_reference();
+
+						let ty = self.promote_int_literal_into(exp, arg.ty);
 
 						if ty != arg.ty {
 							return Err(TypeCheckerError::TypeMismatch(format!(
-								"{:?} did not match {:?}",
-								ty, arg.ty
+								"{} did not match {}",
+								self.format_type(ty),
+								self.format_type(arg.ty)
 							)));
 						}
 					}
