@@ -4,6 +4,8 @@ use std::{
 	rc::Rc,
 };
 
+use itertools::Itertools;
+
 use crate::{
 	checker::AST,
 	lexer::Operator,
@@ -76,7 +78,11 @@ impl Compiler {
 			self.compile_function(function);
 		}
 		for (i, str) in self.string_literals.borrow().iter().enumerate() {
-			self.write(format!("_str{}: db \"{}\"", i, str));
+			self.write(format!(
+				"_str{}: db {}",
+				i,
+				str.chars().map(|x| x as u8).join(",")
+			));
 		}
 
 		self.code.borrow().clone()

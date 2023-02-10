@@ -202,7 +202,24 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 					}
 				}
 				'"' => {
-					let str: String = self.peeking_take_while(|c| *c != '"').collect();
+					let mut str = String::new();
+					while self.peek()? != '"' {
+						let c = self.next()?;
+						if c == '\\' {
+							match self.next()? {
+								'n' => str.push('\n'),
+								't' => str.push('\t'),
+								'r' => str.push('\r'),
+								'0' => str.push('\0'),
+								'"' => str.push('"'),
+								'\\' => str.push('\\'),
+								// maybe add \x hex hex
+								esc => panic!("invalid string escape {esc}"),
+							}
+						} else {
+							str.push(c);
+						}
+					}
 					self.next();
 					TokenKind::StringLiteral(str)
 				}
