@@ -1,0 +1,46 @@
+// returns 0
+
+fn alloc(size: i32): u8* {
+	let fd: i32 = syscall(5, "/dev/zero\0".data, 2, 0);
+	let addr: i32 = syscall(0xc0, 0, size, 3, 2, fd, 0);
+	syscall(6, fd);
+	return (addr as uptr) as u8*;
+}
+
+fn print_num(num: i32) {
+	let buffer: u8* = alloc(16);
+
+	let start: uptr = buffer as uptr + 16;
+	let size: i32 = 0;
+
+	// no do-while loops so..
+	let first: bool = true;
+
+	while num != 0 || first {
+		first = false;
+		start = start - 1;
+		*(start as u8*) = 0x30 + (num % 10);
+		num = num / 10;
+		size = size + 1;
+	}
+
+	syscall(4, 1, start, size);
+	syscall(4, 1, "\n".data, 1);
+}
+
+fn fib(i: i32): i32 {
+	if i < 2 {
+		return i;
+	} else {
+		return fib(i - 1) + fib(i - 2);
+	}
+}
+
+fn main(): i32 {
+	let i: i32 = 1;
+	while i != 10 {
+		print_num(fib(i));
+		i = i + 1;
+	}
+	return 0;
+}

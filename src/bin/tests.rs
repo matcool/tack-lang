@@ -39,7 +39,7 @@ fn run_test(path: PathBuf, binary_path: PathBuf) {
 	let code = out.status.code().unwrap();
 	print!("returned code {code} ");
 	if !out.stdout.is_empty() {
-		print!(" output: {:?} ", out.stdout);
+		print!(" output: {:?} ", String::from_utf8(out.stdout).unwrap());
 	}
 	if code == 11 {
 		print!("SEGFAULT");

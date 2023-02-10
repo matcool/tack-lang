@@ -1,0 +1,10 @@
+// returns 0
+
+fn print(msg: str*) {
+	syscall(4, 1, msg.data, msg.size);
+}
+
+fn main(): i32 {
+	print(&"Hello world!\n");
+	return 0;
+}
