@@ -703,7 +703,9 @@ impl TypeChecker<'_> {
 					name: "$str".into(),
 					ty: BUILTIN_TYPE_STR,
 				});
-				Ok(BUILTIN_TYPE_STR)
+				// TODO: this is kinda hacky, it matches what compiler was doing anyways but
+				// should probably not be intented behavior
+				Ok(BUILTIN_TYPE_STR.add_reference())
 			}
 			k => {
 				todo!("{:?}", k)
