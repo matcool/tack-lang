@@ -210,6 +210,7 @@ pub struct Function {
 	pub arguments: Vec<Variable>,
 	pub return_type: TypeRef,
 	pub scope: Rc<Scope>,
+	pub is_struct_return: bool,
 }
 
 impl Function {
@@ -221,6 +222,7 @@ impl Function {
 			arguments: vec![],
 			return_type: TypeRef::unknown(),
 			scope: Rc::new(Scope::new(None)),
+			is_struct_return: false,
 		}
 	}
 }

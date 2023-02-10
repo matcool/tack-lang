@@ -1,0 +1,26 @@
+// returns 32
+
+struct Point {
+	x: i32;
+	y: i32;
+	z: i32;
+}
+
+fn make_point(x: i32, y: i32, z: i32): Point {
+	let point: Point;
+	point.x = x;
+	point.y = y;
+	point.z = z;
+
+	return point;
+}
+
+fn get_x(point: Point*): i32 {
+	return point.x;
+}
+
+fn main(): i32 {
+	let point: Point = make_point(10, 13, 3);
+	let other: Point = make_point(5, 20, 4);
+	return get_x(&point) + point.y + get_x(&other) + other.z;
+}

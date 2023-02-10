@@ -42,7 +42,7 @@ pub fn run<S: AsRef<std::path::Path>>(
 			// use bash -c because im on windows and i want it to run on wsl :-)
 			Command::new("bash")
 				.arg("-c")
-				.arg(format!("nasm -f elf \"{0}\" -o \"{0}.o\"", output))
+				.arg(format!("nasm -f elf \"{0}\" -F dwarf -o \"{0}.o\"", output))
 				.output()
 				.unwrap();
 

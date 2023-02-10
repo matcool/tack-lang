@@ -19,7 +19,7 @@ fn print_num(num: i32) {
 	while num != 0 || first {
 		first = false;
 		start = start - 1;
-		*(start as u8*) = 0x30 + (num % 10);
+		*(start as u8*) = (0x30 + (num % 10)) as u8;
 		num = num / 10;
 		size = size + 1;
 	}

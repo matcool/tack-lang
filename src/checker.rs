@@ -224,6 +224,7 @@ impl TypeChecker<'_> {
 		{
 			let mut function = function.borrow_mut();
 			function.return_type = self.check_parsed_type(&function.parsed_return_type)?;
+			function.is_struct_return = self.ast.is_struct(function.return_type);
 
 			let mut args = Vec::new();
 			for arg in &function.parsed_arguments {
@@ -286,7 +287,7 @@ impl TypeChecker<'_> {
 						"between return type and the expression".into(),
 					));
 				}
-				if !function.return_type.reference {
+				if !function.return_type.reference && !function.is_struct_return {
 					statement.children[0].cast_if_reference();
 				}
 			}
@@ -669,6 +670,9 @@ impl TypeChecker<'_> {
 								self.format_type(arg.ty)
 							)));
 						}
+					}
+					if func.is_struct_return {
+						function.scope.variables.borrow_mut().push(Variable { name: "$struct_space".into(), ty: func.return_type });
 					}
 					Ok(func.return_type)
 				} else if name == "syscall" {

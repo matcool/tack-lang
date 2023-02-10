@@ -10,7 +10,7 @@ use crate::{
 	checker::AST,
 	lexer::Operator,
 	parser::{
-		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind, Type,
+		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind, Type, Variable,
 	},
 };
 
@@ -93,7 +93,7 @@ impl Compiler {
 		self.variables.borrow_mut().clear();
 		self.var_counter.set(0);
 
-		if !function.scope.variables.borrow().is_empty() || !function.arguments.is_empty() {
+		if !function.scope.variables.borrow().is_empty() || !function.arguments.is_empty() || function.is_struct_return {
 			self.write("push ebp");
 			self.write("mov ebp, esp");
 			if !function.scope.variables.borrow().is_empty() {
@@ -110,10 +110,14 @@ impl Compiler {
 
 	fn generate_return(&self, function: &Function) {
 		let vars = function.scope.variables.borrow();
-		if !vars.is_empty() || !function.arguments.is_empty() {
+		if !vars.is_empty() || !function.arguments.is_empty() || function.is_struct_return {
 			if !vars.is_empty() {
 				let scope_size = function.scope.size(&self.ast);
 				self.write(format!("add esp, {}", scope_size));
+			}
+			if function.is_struct_return {
+				self.write("mov ecx, [ebp + 8]");
+				self.copy_memory("ecx", "eax", "edx", self.ast.get_type_size(function.return_type));
 			}
 			self.write("mov esp, ebp");
 			self.write("pop ebp");
@@ -130,6 +134,27 @@ impl Compiler {
 	fn compile_scope(&self, scope: Rc<Scope>, function: &Function) {
 		for statement in &scope.statements {
 			self.compile_statement(&statement.borrow(), function);
+		}
+	}
+
+	fn copy_memory(&self, dst_reg: &str, src_reg: &str, scratch_reg: &str, size: usize) {
+		self.write(format!("; copying {size} bytes from {src_reg} to {dst_reg}, using {scratch_reg} as scratch"));
+		let times = size / POINTER_SIZE;
+		for i in 0..times {
+			let i = i * POINTER_SIZE;
+			self.write(format!("mov {scratch_reg}, [{src_reg} + {i}]"));
+			self.write(format!("mov [{dst_reg} + {i}], {scratch_reg}"));
+		}
+		let scratch_reg = match scratch_reg {
+			"eax" => "al",
+			"ebx" => "bl",
+			"ecx" => "cl",
+			"edx" => "dl",
+			_ => unreachable!()
+		};
+		for i in (times * POINTER_SIZE)..size {
+			self.write(format!("mov {scratch_reg}, BYTE [{src_reg} + {i}]"));
+			self.write(format!("mov BYTE [{dst_reg} + {i}], {scratch_reg}"));
 		}
 	}
 
@@ -202,15 +227,7 @@ impl Compiler {
 					self.ast.get_type(exp.children[0].value_type).as_ref(),
 					Type::Struct(_)
 				) {
-					let left = lhs_size % 4;
-					for i in (0..(lhs_size - left)).step_by(4) {
-						self.write(format!("mov edx, [ecx + {i}]"));
-						self.write(format!("mov [eax + {i}], edx"));
-					}
-					for i in (lhs_size - left)..lhs_size {
-						self.write(format!("mov dl, BYTE [ecx + {i}]"));
-						self.write(format!("mov BYTE [eax + {i}], dl"));
-					}
+					self.copy_memory("eax", "ecx", "edx", lhs_size);
 				} else {
 					match lhs_size {
 						1 => self.write("mov BYTE [eax], cl"),
@@ -239,7 +256,10 @@ impl Compiler {
 						.find(|(_, x)| &x.name == name)
 						.expect("expected variable.. type checker went wrong somewhere")
 						.0;
-					let stack_index = function.arguments.len() - index - 1 + 2;
+					let mut stack_index = function.arguments.len() - index - 1 + 2;
+					if function.is_struct_return {
+						stack_index += 1;
+					}
 					self.write(format!("lea eax, [ebp + {}]", stack_index * 4));
 				}
 			}
@@ -382,13 +402,30 @@ impl Compiler {
 					self.compile_expression(child, function);
 					self.write("push eax");
 				}
-				self.write(format!("call {name}"));
 				let func = self
 					.ast
 					.functions
 					.iter()
 					.find(|f| &f.name == name)
 					.expect("where the function");
+
+				let mut struct_offset = 0;
+				if func.is_struct_return {
+					let size = self.ast.get_type_size(func.return_type);
+					struct_offset = self.var_counter.get() + size as i32;
+					self.var_counter.set(struct_offset);
+
+					// cheat and just put a pointer to this on eax
+					self.write(format!("lea eax, [ebp - {}]", struct_offset));
+					self.write(format!("push eax"));
+				}
+
+				self.write(format!("call {name}"));
+				
+				if func.is_struct_return {
+					self.write("add esp, 4");
+					self.write(format!("lea eax, [ebp - {}]", struct_offset));
+				}
 				if !func.arguments.is_empty() {
 					self.write(format!("add esp, {}", func.arguments.len() * 4));
 				}
