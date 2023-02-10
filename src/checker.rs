@@ -560,9 +560,12 @@ impl TypeChecker<'_> {
 				}
 
 				if self.ast.is_pointer(lhs) && !matches!(op, Operator::Assign) {
-					let rhs = self.promote_int_literal_into(&mut expression.children[1], BUILTIN_TYPE_I32);
+					let rhs = self
+						.promote_int_literal_into(&mut expression.children[1], BUILTIN_TYPE_I32);
 					if !matches!(op, Operator::Add | Operator::Sub) || rhs != BUILTIN_TYPE_I32 {
-						return Err(TypeCheckerError::TypeMismatch("pointers only support addition and subtraction with i32".into()));
+						return Err(TypeCheckerError::TypeMismatch(
+							"pointers only support addition and subtraction with i32".into(),
+						));
 					}
 					expression.children[0].cast_if_reference();
 					expression.children[1].cast_if_reference();
@@ -602,9 +605,10 @@ impl TypeChecker<'_> {
 				if op != &Operator::Assign {
 					expression.children[0].cast_if_reference();
 				}
-				
+
 				// to fix rhs on struct assignment being reference, when it should be kept for compiler
-				if op != &Operator::Assign || !self.ast.is_struct(expression.children[1].value_type) {
+				if op != &Operator::Assign || !self.ast.is_struct(expression.children[1].value_type)
+				{
 					expression.children[1].cast_if_reference();
 				}
 
@@ -672,7 +676,10 @@ impl TypeChecker<'_> {
 						}
 					}
 					if func.is_struct_return {
-						function.scope.variables.borrow_mut().push(Variable { name: "$struct_space".into(), ty: func.return_type });
+						function.scope.variables.borrow_mut().push(Variable {
+							name: "$struct_space".into(),
+							ty: func.return_type,
+						});
 					}
 					Ok(func.return_type)
 				} else if name == "syscall" {

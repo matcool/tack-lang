@@ -10,7 +10,8 @@ use crate::{
 	checker::AST,
 	lexer::Operator,
 	parser::{
-		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind, Type, Variable,
+		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind, Type,
+		Variable,
 	},
 };
 
@@ -93,7 +94,10 @@ impl Compiler {
 		self.variables.borrow_mut().clear();
 		self.var_counter.set(0);
 
-		if !function.scope.variables.borrow().is_empty() || !function.arguments.is_empty() || function.is_struct_return {
+		if !function.scope.variables.borrow().is_empty()
+			|| !function.arguments.is_empty()
+			|| function.is_struct_return
+		{
 			self.write("push ebp");
 			self.write("mov ebp, esp");
 			if !function.scope.variables.borrow().is_empty() {
@@ -117,7 +121,12 @@ impl Compiler {
 			}
 			if function.is_struct_return {
 				self.write("mov ecx, [ebp + 8]");
-				self.copy_memory("ecx", "eax", "edx", self.ast.get_type_size(function.return_type));
+				self.copy_memory(
+					"ecx",
+					"eax",
+					"edx",
+					self.ast.get_type_size(function.return_type),
+				);
 			}
 			self.write("mov esp, ebp");
 			self.write("pop ebp");
@@ -138,7 +147,9 @@ impl Compiler {
 	}
 
 	fn copy_memory(&self, dst_reg: &str, src_reg: &str, scratch_reg: &str, size: usize) {
-		self.write(format!("; copying {size} bytes from {src_reg} to {dst_reg}, using {scratch_reg} as scratch"));
+		self.write(format!(
+			"; copying {size} bytes from {src_reg} to {dst_reg}, using {scratch_reg} as scratch"
+		));
 		let times = size / POINTER_SIZE;
 		for i in 0..times {
 			let i = i * POINTER_SIZE;
@@ -150,7 +161,7 @@ impl Compiler {
 			"ebx" => "bl",
 			"ecx" => "cl",
 			"edx" => "dl",
-			_ => unreachable!()
+			_ => unreachable!(),
 		};
 		for i in (times * POINTER_SIZE)..size {
 			self.write(format!("mov {scratch_reg}, BYTE [{src_reg} + {i}]"));
@@ -301,7 +312,8 @@ impl Compiler {
 				self.write("pop ecx");
 				// ecx is lhs
 				// eax is rhs
-				if let Type::Pointer(inner) = self.ast.get_type(exp.children[0].value_type).as_ref() {
+				if let Type::Pointer(inner) = self.ast.get_type(exp.children[0].value_type).as_ref()
+				{
 					self.write(format!("imul eax, {}", self.ast.get_type_size(*inner)));
 				}
 				match op {
@@ -319,7 +331,9 @@ impl Compiler {
 							Operator::Equals => self.write("sete al"),
 							Operator::NotEquals => self.write("setne al"),
 							Operator::LessThan => self.write("setl al"),
+							Operator::LessThanEq => self.write("setle al"),
 							Operator::GreaterThan => self.write("setg al"),
+							Operator::GreaterThanEq => self.write("setge al"),
 							_ => unreachable!(),
 						}
 					}
@@ -340,6 +354,14 @@ impl Compiler {
 					}
 					Operator::BitOr => {
 						self.write("or eax, ecx");
+					}
+					Operator::BitShiftLeft | Operator::BitShiftRight => {
+						self.write("xchg ecx, eax");
+						if op == Operator::BitShiftLeft {
+							self.write("shl eax, cl");
+						} else {
+							self.write("shr eax, cl");
+						}
 					}
 					_ => todo!("unhandled {:?}", op),
 				}
@@ -421,7 +443,7 @@ impl Compiler {
 				}
 
 				self.write(format!("call {name}"));
-				
+
 				if func.is_struct_return {
 					self.write("add esp, 4");
 					self.write(format!("lea eax, [ebp - {}]", struct_offset));

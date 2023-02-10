@@ -29,8 +29,12 @@ pub enum Operator {
 	Mod,
 	Or,
 	BitOr,
-	GreaterThan, // TODO:
+	GreaterThan,
 	LessThan,
+	GreaterThanEq,
+	LessThanEq,
+	BitShiftLeft,
+	BitShiftRight,
 	// unary ops
 	Not,
 	Negate,
@@ -142,8 +146,34 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 				'-' => TokenKind::Operator(Operator::Sub),
 				'*' => TokenKind::Operator(Operator::Multiply),
 				'%' => TokenKind::Operator(Operator::Mod),
-				'>' => TokenKind::Operator(Operator::GreaterThan),
-				'<' => TokenKind::Operator(Operator::LessThan),
+				'>' => TokenKind::Operator(match self.peek()? {
+					'>' => {
+						self.next()?;
+						Operator::BitShiftRight
+					}
+					'=' => {
+						self.next()?;
+						Operator::GreaterThanEq
+					}
+					_ => {
+						self.next()?;
+						Operator::GreaterThan
+					}
+				}),
+				'<' => TokenKind::Operator(match self.peek()? {
+					'<' => {
+						self.next()?;
+						Operator::BitShiftLeft
+					}
+					'=' => {
+						self.next()?;
+						Operator::LessThanEq
+					}
+					_ => {
+						self.next()?;
+						Operator::LessThan
+					}
+				}),
 				'=' => {
 					if self.peek()? == '=' {
 						self.next()?;
