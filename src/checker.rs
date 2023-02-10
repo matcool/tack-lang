@@ -94,6 +94,10 @@ impl AST {
 	pub fn get_type_size(&self, type_ref: TypeRef) -> usize {
 		self.get_type(type_ref).size(self)
 	}
+
+	pub fn is_struct(&self, type_ref: TypeRef) -> bool {
+		matches!(self.get_type(type_ref).as_ref(), Type::Struct(_))
+	}
 }
 
 impl Expression {
@@ -582,8 +586,11 @@ impl TypeChecker<'_> {
 				if op != &Operator::Assign {
 					expression.children[0].cast_if_reference();
 				}
-
-				expression.children[1].cast_if_reference();
+				
+				// to fix rhs on struct assignment being reference, when it should be kept for compiler
+				if op != &Operator::Assign || !self.ast.is_struct(expression.children[1].value_type) {
+					expression.children[1].cast_if_reference();
+				}
 
 				match op {
 					Operator::Equals
@@ -705,7 +712,7 @@ impl TypeChecker<'_> {
 				});
 				// TODO: this is kinda hacky, it matches what compiler was doing anyways but
 				// should probably not be intented behavior
-				Ok(BUILTIN_TYPE_STR.add_reference())
+				Ok(BUILTIN_TYPE_STR)
 			}
 			k => {
 				todo!("{:?}", k)
