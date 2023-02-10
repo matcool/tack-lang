@@ -101,10 +101,10 @@ impl Expression {
 		std::mem::swap(self, &mut new);
 	}
 
-	fn replace_with_children(&mut self, mut new: Expression) {
-		std::mem::swap(self, &mut new);
-		self.children.append(&mut new.children);
-	}
+	// fn replace_with_children(&mut self, mut new: Expression) {
+	// 	std::mem::swap(self, &mut new);
+	// 	self.children.append(&mut new.children);
+	// }
 
 	fn replace_with_cast(&mut self, typ: TypeRef) {
 		let mut cast = Expression::new(ExpressionKind::Cast, vec![]);
@@ -143,6 +143,7 @@ const BUILTIN_TYPE_BOOL: TypeRef = TypeRef::new(2);
 const BUILTIN_TYPE_UPTR: TypeRef = TypeRef::new(3);
 const BUILTIN_TYPE_VOID: TypeRef = TypeRef::new(4);
 const BUILTIN_TYPE_INT_LITERAL: TypeRef = TypeRef::new(5);
+const BUILTIN_TYPE_STR: TypeRef = TypeRef::new(7); // 6 is u8*
 
 pub struct TypeChecker<'a> {
 	parser: &'a Parser,
@@ -164,6 +165,21 @@ impl TypeChecker<'_> {
 		self.ast.add_type(Type::BuiltIn(BuiltInType::UPtr));
 		self.ast.add_type(Type::BuiltIn(BuiltInType::Void));
 		self.ast.add_type(Type::BuiltIn(BuiltInType::IntLiteral));
+
+		let u8_ptr = self.ast.find_type_or_add(Type::Pointer(BUILTIN_TYPE_U8));
+		self.ast.add_type(Type::Struct(StructType {
+			name: "str".into(),
+			fields: vec![
+				Variable {
+					name: "data".into(),
+					ty: u8_ptr,
+				},
+				Variable {
+					name: "size".into(),
+					ty: BUILTIN_TYPE_I32,
+				},
+			],
+		}));
 
 		for parsed_struct in &self.parser.parsed_structs {
 			let mut fields: Vec<Variable> = vec![];
@@ -337,7 +353,9 @@ impl TypeChecker<'_> {
 			return expression.value_type;
 		}
 		let target_type = self.ast.get_type(type_ref);
-		if let Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8 | BuiltInType::UPtr) = target_type.as_ref() {
+		if let Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8 | BuiltInType::UPtr) =
+			target_type.as_ref()
+		{
 			expression.value_type = type_ref.remove_reference();
 			if let ExpressionKind::Operator(_) = expression.kind {
 				for child in &mut expression.children {
@@ -497,9 +515,8 @@ impl TypeChecker<'_> {
 			}
 			ExpressionKind::Operator(op) if op.is_binary() => {
 				let lhs;
-				let rhs;
 				if op == &Operator::Assign {
-					rhs = self.check_expression(
+					self.check_expression(
 						&mut expression.children[1],
 						function,
 						Rc::clone(&scope),
@@ -517,7 +534,7 @@ impl TypeChecker<'_> {
 						function,
 						Rc::clone(&scope),
 					)?;
-					rhs = self.check_expression(&mut expression.children[1], function, scope)?;
+					self.check_expression(&mut expression.children[1], function, scope)?;
 				}
 
 				let rhs = self.promote_int_literal_into(&mut expression.children[1], lhs);
@@ -573,6 +590,7 @@ impl TypeChecker<'_> {
 					| Operator::NotEquals
 					| Operator::GreaterThan
 					| Operator::LessThan => Ok(BUILTIN_TYPE_BOOL),
+					Operator::Assign => Ok(BUILTIN_TYPE_VOID),
 					_ => Ok(lhs.remove_reference()),
 				}
 			}
@@ -666,6 +684,14 @@ impl TypeChecker<'_> {
 				self.check_expression(expression, function, scope)
 			}
 			ExpressionKind::AsmLiteral(_) => Ok(BUILTIN_TYPE_VOID),
+			ExpressionKind::StringLiteral(_) => {
+				// create a fake variable just so compiler creates enough space in the scope..
+				scope.variables.borrow_mut().push(Variable {
+					name: "$str".into(),
+					ty: BUILTIN_TYPE_STR,
+				});
+				Ok(BUILTIN_TYPE_STR)
+			}
 			k => {
 				todo!("{:?}", k)
 			}

@@ -1,0 +1,7 @@
+// returns 10
+
+fn main(): i32 {
+	let foo: str = "hello";
+
+	return "world".size + foo.size;
+}

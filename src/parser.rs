@@ -119,6 +119,7 @@ pub enum ExpressionKind {
 	StructAccess(TypeRef, String),
 	ParsedCast(ParsedType),
 	AsmLiteral(String),
+	StringLiteral(String),
 }
 
 #[derive(Debug)]
@@ -512,6 +513,10 @@ impl Parser {
 				};
 				Ok(Expression::new(ExpressionKind::Operator(op), vec![child]))
 			}
+			TokenKind::StringLiteral(content) => Ok(Expression::new(
+				ExpressionKind::StringLiteral(content),
+				vec![],
+			)),
 			kind => {
 				todo!("expression {:?}", kind);
 			}

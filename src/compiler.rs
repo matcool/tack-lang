@@ -18,6 +18,7 @@ pub struct Compiler {
 	variables: RefCell<HashMap<String, i32>>,
 	var_counter: Cell<i32>,
 	label_counter: Cell<i32>,
+	string_literals: RefCell<Vec<String>>,
 }
 
 const POINTER_SIZE: usize = 4;
@@ -61,6 +62,7 @@ impl Compiler {
 			variables: HashMap::new().into(),
 			var_counter: 0.into(),
 			label_counter: 0.into(),
+			string_literals: vec![].into(),
 		}
 	}
 
@@ -73,6 +75,10 @@ impl Compiler {
 		for function in &self.ast.functions {
 			self.compile_function(function);
 		}
+		for (i, str) in self.string_literals.borrow().iter().enumerate() {
+			self.write(format!("_str{}: db \"{}\"", i, str));
+		}
+
 		self.code.borrow().clone()
 	}
 
@@ -185,14 +191,28 @@ impl Compiler {
 				self.write("pop ecx");
 
 				let lhs_size = self.ast.get_type_size(exp.children[0].value_type);
-				match lhs_size {
-					1 => self.write("mov BYTE [eax], cl"),
-					2 => self.write("mov WORD [eax], cx"),
-					4 => self.write("mov [eax], ecx"),
-					_ => unimplemented!("assignment for type with size {}", lhs_size),
-				};
 
-				self.write("mov eax, ecx");
+				if matches!(
+					self.ast.get_type(exp.children[0].value_type).as_ref(),
+					Type::Struct(_)
+				) {
+					let left = lhs_size % 4;
+					for i in (0..(lhs_size - left)).step_by(4) {
+						self.write(format!("mov edx, [ecx + {i}]"));
+						self.write(format!("mov [eax + {i}], edx"));
+					}
+					for i in (lhs_size - left)..lhs_size {
+						self.write(format!("mov dl, BYTE [ecx + {i}]"));
+						self.write(format!("mov BYTE [eax + {i}], dl"));
+					}
+				} else {
+					match lhs_size {
+						1 => self.write("mov BYTE [eax], cl"),
+						2 => self.write("mov WORD [eax], cx"),
+						4 => self.write("mov [eax], ecx"),
+						_ => unimplemented!("assignment for type with size {}", lhs_size),
+					};
+				}
 			}
 			ExpressionKind::Declaration(ref var) => {
 				let size = self.ast.get_type_size(var.ty);
@@ -344,6 +364,25 @@ impl Compiler {
 			}
 			ExpressionKind::AsmLiteral(ref str) => {
 				self.write(str);
+			}
+			ExpressionKind::StringLiteral(ref str) => {
+				let lits = &mut self.string_literals.borrow_mut();
+				let index = lits.len();
+				lits.push(str.clone());
+
+				let size = self.ast.get_type_size(exp.value_type);
+				let offset = self.var_counter.get() + size as i32;
+				self.var_counter.set(offset);
+
+				self.write(format!("lea eax, [_str{}]", index));
+				self.write(format!("mov [ebp - {}], eax", offset));
+				self.write(format!(
+					"mov DWORD [ebp - {}], {}",
+					offset - POINTER_SIZE as i32,
+					str.len()
+				));
+				// cheat and just put a pointer to this on eax
+				self.write(format!("lea eax, [ebp - {}]", offset));
 			}
 			ref k => {
 				todo!("expression {:?}", k);
