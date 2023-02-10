@@ -1,0 +1,11 @@
+// returns 0
+
+fn main(): i32 {
+	let x: i32 = 0xa0c | 0x0b0;
+	let y: i32 = x & 0x0f0;
+	if y == 0xb0 {
+		return 0;
+	} else {
+		return 1;
+	}
+}

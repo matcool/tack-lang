@@ -312,6 +312,12 @@ impl Compiler {
 							self.write("mov eax, edx");
 						}
 					}
+					Operator::BitAnd => {
+						self.write("and eax, ecx");
+					}
+					Operator::BitOr => {
+						self.write("or eax, ecx");
+					}
 					_ => todo!("unhandled {:?}", op),
 				}
 			}

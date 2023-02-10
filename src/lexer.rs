@@ -42,7 +42,7 @@ pub enum Operator {
 pub enum TokenKind {
 	Keyword(Keyword),
 	Identifier(String),
-	Number(i32),
+	Number(i64),
 	Operator(Operator),
 	Semicolon,
 	LeftParen,
@@ -191,7 +191,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 						let number: String =
 							self.peeking_take_while(|c| c.is_ascii_hexdigit()).collect();
 
-						TokenKind::Number(i32::from_str_radix(number.as_str(), 16).unwrap())
+						TokenKind::Number(i64::from_str_radix(number.as_str(), 16).unwrap())
 					} else {
 						let mut number: String =
 							self.peeking_take_while(|c| c.is_ascii_digit()).collect();

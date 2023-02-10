@@ -68,18 +68,20 @@ pub struct ParsedStruct {
 }
 
 impl Operator {
-	const MAX_PRECEDENCE: i32 = 8;
+	const MAX_PRECEDENCE: i32 = 10;
 	fn precedence(&self) -> i32 {
 		match self {
 			Operator::Assign => 0,
 			Operator::Or => 1,
 			Operator::And => 2,
-			Operator::Equals | Operator::NotEquals => 3,
-			Operator::GreaterThan | Operator::LessThan => 4,
-			Operator::Add | Operator::Sub => 5,
-			Operator::Multiply | Operator::Divide | Operator::Mod => 6,
-			Operator::As => 7,
-			Operator::Dot => 8,
+			Operator::BitOr => 3,
+			Operator::BitAnd => 4,
+			Operator::Equals | Operator::NotEquals => 5,
+			Operator::GreaterThan | Operator::LessThan => 6,
+			Operator::Add | Operator::Sub => 7,
+			Operator::Multiply | Operator::Divide | Operator::Mod => 8,
+			Operator::As => 9,
+			Operator::Dot => 10,
 			_ => 9999,
 		}
 	}
@@ -108,7 +110,7 @@ pub struct ParsedVariable {
 
 #[derive(Debug)]
 pub enum ExpressionKind {
-	NumberLiteral(i32),
+	NumberLiteral(i64),
 	BoolLiteral(bool),
 	ParsedDeclaration(ParsedVariable),
 	Declaration(Variable),
