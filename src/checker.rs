@@ -649,6 +649,19 @@ impl TypeChecker<'_> {
 						}
 					}
 					Ok(func.return_type)
+				} else if name == "syscall" {
+					if expression.children.len() > 7 || expression.children.len() < 1 {
+						return Err(TypeCheckerError::ArgumentCountMismatch);
+					}
+					for exp in expression.children.iter_mut() {
+						self.check_expression(exp, function, Rc::clone(&scope))?;
+						exp.cast_if_reference();
+
+						self.promote_int_literal_into(exp, BUILTIN_TYPE_I32);
+
+						// TODO: check if types arent like structs or something
+					}
+					Ok(BUILTIN_TYPE_I32)
 				} else {
 					Err(TypeCheckerError::FunctionNotFound(name.clone()))
 				}

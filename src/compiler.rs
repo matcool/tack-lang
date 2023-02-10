@@ -343,6 +343,30 @@ impl Compiler {
 					}
 				}
 			}
+			ExpressionKind::Call(ref name) if name == "syscall" => {
+				if exp.children.len() == 7 {
+					self.write("push ebp");
+				}
+				for child in &exp.children {
+					self.compile_expression(child, function);
+					self.write("push eax");
+				}
+
+				let regs = ["eax", "ebx", "ecx", "edx", "esi", "edi", "ebp"];
+
+				for i in 0..exp.children.len() {
+					let reg = regs[exp.children.len() - i - 1];
+					self.write(format!("mov {reg}, [esp + {}]", i * 4));
+				}
+				self.write("int 0x80");
+				// FIXME: syscalls return in eax and edx
+				// but this only cares about the value in eax, for now
+
+				self.write(format!("add esp, {}", exp.children.len() * 4));
+				if exp.children.len() == 7 {
+					self.write("pop ebp");
+				}
+			}
 			ExpressionKind::Call(ref name) => {
 				for child in &exp.children {
 					self.compile_expression(child, function);
