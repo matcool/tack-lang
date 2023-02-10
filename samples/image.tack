@@ -1,0 +1,163 @@
+// generates a qoi image
+// ok i need arrays
+
+fn alloc(size: i32): u8* {
+	// open("/dev/zero", O_RDWR)
+	let fd: i32 = syscall(5, "/dev/zero\0".data, 2, 0);
+	// mmap2(...)
+	let addr: i32 = syscall(0xc0, 0, size, 3, 2, fd, 0);
+	// close(fd)
+	syscall(6, fd);
+	return (addr as uptr) as u8*;
+}
+
+fn print(msg: str*) {
+	syscall(4, 1, msg.data, msg.size);
+}
+
+struct BufFile {
+	fd: i32;
+	buffer: u8*;
+	buffer_size: i32;
+	buffer_cap: i32;
+}
+
+fn open_file(name: str*): BufFile {
+	let c_str: u8* = alloc(name.size + 1);
+	let i: i32 = 0;
+	while i < name.size {
+		*(c_str + i) = *(name.data + i);
+		i = i + 1;
+	}
+	*(c_str + i) = 0;
+
+	// open(c_str, O_CREAT, S_IRWXU)
+	let fd: i32 = syscall(5, c_str, 66, 448);
+
+	let file: BufFile;
+	file.fd = fd;
+	file.buffer = alloc(1024);
+	file.buffer_size = 0;
+	file.buffer_cap = 1024;
+
+	return file;
+}
+
+fn file_write_raw(fd: i32, data: u8*, size: i32) {
+	syscall(4, fd, data, size);
+}
+
+fn memcpy(dst: u8*, src: u8*, size: i32) {
+	let i: i32 = 0;
+	while i < size {
+		*(dst + i) = *(src + i);
+		i = i + 1;
+	}
+}
+
+fn buf_file_flush(file: BufFile*) {
+	if file.buffer_size != 0 {
+		file_write_raw(file.fd, file.buffer, file.buffer_size);
+		file.buffer_size = 0;
+	}
+}
+
+fn buf_file_write(file: BufFile*, data: u8*, size: i32) {
+	if size > file.buffer_cap {
+		buf_file_flush(file);
+		file_write_raw(file.fd, data, size);
+	} else {
+		let space_left: i32 = file.buffer_cap - file.buffer_size;
+		if space_left < size {
+			buf_file_flush(file);
+			memcpy(file.buffer, data, size);
+			file.buffer_size = size;
+		} else {
+			memcpy(file.buffer + file.buffer_size, data, size);
+			file.buffer_size = file.buffer_size + size;
+		}
+	}
+}
+
+fn buf_file_write_s(file: BufFile*, msg: str*) {
+	buf_file_write(file, msg.data, msg.size);
+}
+
+fn buf_file_close(file: BufFile*) {
+	buf_file_flush(file);
+	syscall(6, file.fd);
+}
+
+fn buf_file_write_byte(file: BufFile*, byte: u8) {
+	buf_file_write(file, &byte, 1);
+}
+
+fn write_i32_be(file: BufFile*, value: i32) {
+	buf_file_write_byte(file, ((value & 0xFF000000) / 0x01000000) as u8);
+	buf_file_write_byte(file, ((value & 0x00FF0000) / 0x00010000) as u8);
+	buf_file_write_byte(file, ((value & 0x0000FF00) / 0x00000100) as u8);
+	buf_file_write_byte(file,  (value & 0x000000FF) as u8);
+}
+
+// use qoi as a glorified ppm pretty much
+fn save_image(name: str*, pixels: i32*, width: i32, height: i32) {
+	let file: BufFile = open_file(name);
+	buf_file_write_s(&file, &"qoif");
+	write_i32_be(&file, width);
+	write_i32_be(&file, height);
+	buf_file_write_byte(&file, 4); // RGBA
+	buf_file_write_byte(&file, 0); // sRGB (idk what this means)
+	let i: i32 = 0;
+	let color: i32;
+	let a: u8;
+	let r: u8;
+	let g: u8;
+	let b: u8;
+	while i < width * height {
+		buf_file_write_byte(&file, 0xFF); // QOI_OP_RGBA
+		color = *(pixels + i);
+		a = ((color & 0xFF000000) / 0x01000000) as u8;
+		r = ((color & 0x00FF0000) / 0x00010000) as u8;
+		g = ((color & 0x0000FF00) / 0x00000100) as u8;
+		b =  (color & 0x000000FF) as u8;
+		buf_file_write_byte(&file, r);
+		buf_file_write_byte(&file, g);
+		buf_file_write_byte(&file, b);
+		buf_file_write_byte(&file, a);
+		i = i + 1;
+	}
+	// mark end of stream
+	buf_file_write_s(&file, &"\0\0\0\0\0\0\0");
+	buf_file_write_byte(&file, 1);
+	buf_file_close(&file);
+}
+
+fn make_color(r: u8, g: u8, b: u8): i32 {
+	return 0xFF000000 | ((r as i32) * 0x10000) | ((g as i32) * 0x100) | (b as i32);
+}
+
+fn main(): i32 {
+	let width: i32 = 1024;
+	let height: i32 = 1024;
+	print(&"welcome!\n");
+	let canvas: i32* = alloc(width * height * 4) as i32*;
+
+	let y: i32 = 0;
+	let x: i32;
+	let i: i32;
+	while y < height {
+		x = 0;
+		while x < width {
+			i = y * width + x;
+			*(canvas + i) = make_color((x & 0xFF) as u8, (y & 0xFF) as u8, 0);
+			x = x + 1;
+		}
+		y = y + 1;
+	}
+
+	print(&"going to save!\n");
+	save_image(&"./image.qoi", canvas, width, height);
+	print(&"saved\n");
+
+	return 0;
+}
