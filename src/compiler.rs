@@ -281,6 +281,9 @@ impl Compiler {
 				self.write("pop ecx");
 				// ecx is lhs
 				// eax is rhs
+				if let Type::Pointer(inner) = self.ast.get_type(exp.children[0].value_type).as_ref() {
+					self.write(format!("imul eax, {}", self.ast.get_type_size(*inner)));
+				}
 				match op {
 					Operator::Add => self.write("add eax, ecx"),
 					Operator::Sub => {
@@ -338,6 +341,7 @@ impl Compiler {
 							Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8 | BuiltInType::UPtr),
 						) => {}
 						(Type::Pointer(_), Type::BuiltIn(BuiltInType::UPtr)) => {}
+						(Type::Pointer(_), Type::Pointer(_)) => {}
 						(Type::BuiltIn(BuiltInType::UPtr), Type::Pointer(_)) => {}
 						(Type::BuiltIn(_), Type::BuiltIn(BuiltInType::Bool)) => {
 							self.write("cmp eax, 0");

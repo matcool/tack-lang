@@ -2,10 +2,9 @@
 
 fn main(): i32 {
 	let b: i32 = 10;
-	let c: i32* = &b;
-	*((c as uptr + 1) as u8*) = 10;
-	// 0x0a0a
-	if (b == 2570) {
+	let c: u8* = &b as u8*;
+	*(c + 1) = 10;
+	if (b == 0x0a0a) {
 		return 0;
 	} else {
 		return 2;

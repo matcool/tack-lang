@@ -98,6 +98,10 @@ impl AST {
 	pub fn is_struct(&self, type_ref: TypeRef) -> bool {
 		matches!(self.get_type(type_ref).as_ref(), Type::Struct(_))
 	}
+
+	pub fn is_pointer(&self, type_ref: TypeRef) -> bool {
+		matches!(self.get_type(type_ref).as_ref(), Type::Pointer(_))
+	}
 }
 
 impl Expression {
@@ -496,6 +500,7 @@ impl TypeChecker<'_> {
 						Type::BuiltIn(BuiltInType::Bool),
 					) => {}
 					(Type::Pointer(_), Type::BuiltIn(BuiltInType::UPtr)) => {}
+					(Type::Pointer(_), Type::Pointer(_)) => {}
 					(Type::BuiltIn(BuiltInType::UPtr), Type::Pointer(_)) => {}
 					(
 						Type::BuiltIn(BuiltInType::IntLiteral),
@@ -542,7 +547,7 @@ impl TypeChecker<'_> {
 				}
 
 				let rhs = self.promote_int_literal_into(&mut expression.children[1], lhs);
-				let lhs = self.promote_int_literal_into(&mut expression.children[1], rhs);
+				let lhs = self.promote_int_literal_into(&mut expression.children[0], rhs);
 
 				if matches!(op, Operator::And | Operator::Or) {
 					if lhs != BUILTIN_TYPE_BOOL {
@@ -551,6 +556,16 @@ impl TypeChecker<'_> {
 					if rhs != BUILTIN_TYPE_BOOL {
 						return Err(TypeCheckerError::TypeMismatch("rhs must be bool".into()));
 					}
+				}
+
+				if self.ast.is_pointer(lhs) && !matches!(op, Operator::Assign) {
+					let rhs = self.promote_int_literal_into(&mut expression.children[1], BUILTIN_TYPE_I32);
+					if !matches!(op, Operator::Add | Operator::Sub) || rhs != BUILTIN_TYPE_I32 {
+						return Err(TypeCheckerError::TypeMismatch("pointers only support addition and subtraction with i32".into()));
+					}
+					expression.children[0].cast_if_reference();
+					expression.children[1].cast_if_reference();
+					return Ok(lhs.remove_reference());
 				}
 
 				if lhs != rhs {
