@@ -11,6 +11,27 @@ fn alloc(size: i32): u8* {
 	return (addr as uptr) as u8*;
 }
 
+fn print_num(num: i32) {
+	let buffer: u8* = alloc(16);
+
+	let start: uptr = buffer as uptr + 16;
+	let size: i32 = 0;
+
+	// no do-while loops so..
+	let first: bool = true;
+
+	while num != 0 || first {
+		first = false;
+		start = start - 1;
+		*(start as u8*) = (0x30 + (num % 10)) as u8;
+		num = num / 10;
+		size = size + 1;
+	}
+
+	syscall(4, 1, start, size);
+	syscall(4, 1, "\n".data, 1);
+}
+
 fn print(msg: str*) {
 	syscall(4, 1, msg.data, msg.size);
 }
@@ -111,50 +132,132 @@ fn unpack_color(color: i32): Color {
 	return res;
 }
 
+fn pack_color(color: Color): i32 {
+	return color.r as i32 << 24 | color.g as i32 << 16 | color.b as i32 << 8 | color.a as i32;
+}
+
+fn hash_color(color: Color): i32 {
+	return ((color.r as i32) * 3 + (color.g as i32) * 5 + (color.b as i32) * 7 + (color.a as i32) * 11) % 64;
+}
+
+fn color_eq(a: Color, b: Color): bool {
+	return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+
+fn wrap_diff(value: i32, prev: i32): i32 {
+	// this is rly dumb
+	let diff: i32 = value - prev;
+	if diff + 256 < 100 { return diff + 256; }
+	if diff - 256 > -100 { return diff - 256; }
+	return diff;
+}
+
 fn save_image(name: str*, pixels: i32*, width: i32, height: i32) {
 	let file: File = open_file(name);
+
+	// file header
 	file_write_s(&file, &"qoif");
 	write_i32_be(&file, width);
 	write_i32_be(&file, height);
 	file_write_byte(&file, 4); // RGBA
 	file_write_byte(&file, 0); // sRGB (idk what this means)
+
 	let i: i32 = 0;
 	let prev_color: Color;
 	prev_color.r = 0;
 	prev_color.g = 0;
 	prev_color.b = 0;
 	prev_color.a = 255;
+	let run_length: i32 = 0;
+
+	let color_array: i32* = alloc(64 * 4) as i32*;
+	while i < 64 {
+		*(color_array + i) = 0;
+		i = i + 1;
+	}
+	i = 0;
+
+	let total_run: i32 = 0;
+	let total_index: i32 = 0;
+	let total_diff: i32 = 0;
+	let total_luma: i32 = 0;
+	let total_rgb: i32 = 0;
+	let total_rgba: i32 = 0;
+	
 	while i < width * height {
 		let raw_color: i32 = *(pixels + i);
 		let color: Color = unpack_color(raw_color);
-		if color.a == prev_color.a {
-			let dr: i32 = 2 + color.r as i32 - prev_color.r as i32;
-			let dg: i32 = 2 + color.g as i32 - prev_color.g as i32;
-			let db: i32 = 2 + color.b as i32 - prev_color.b as i32;
-			// FIXME: this doesnt account for wrap around as explained in spec
-			if dr >= 0 && dr <= 3 && dg >= 0 && dg <= 3 && db >= 0 && db <= 3 {
-				// QOI_OP_DIFF
-				let byte: u8 = 0x40 | (dr << 4) as u8 | (dg << 2) as u8 | db as u8;
-				file_write_byte(&file, byte);
-			} else {
-				file_write_byte(&file, 0xFE); // QOI_OP_RGB
-				file_write_byte(&file, color.r);
-				file_write_byte(&file, color.g);
-				file_write_byte(&file, color.b);
-			}
+		let hash_index: i32 = hash_color(color);
+		if color_eq(color, prev_color) && run_length < 61 {
+			run_length = run_length + 1;
 		} else {
-			file_write_byte(&file, 0xFF); // QOI_OP_RGBA
-			write_i32_be(&file, raw_color);
+			if run_length != 0 {
+				// QOI_OP_RUN
+				file_write_byte(&file, 0xc0 | (run_length - 1) as u8);
+				run_length = 0;
+				total_run = total_run + 1;
+			}
+			let hash_index_color: Color = unpack_color(*(color_array + hash_index));
+			if color_eq(color, hash_index_color) {
+				// QOI_OP_INDEX
+				file_write_byte(&file, hash_index as u8);
+				total_index = total_index + 1;
+			} else if color.a == prev_color.a {
+				let dr: i32 = wrap_diff(color.r as i32, prev_color.r as i32);
+				let dg: i32 = wrap_diff(color.g as i32, prev_color.g as i32);
+				let db: i32 = wrap_diff(color.b as i32, prev_color.b as i32);	
+				if dr >= -2 && dr <= 1 && dg >= -2 && dg <= 1 && db >= -2 && db <= 1 {
+					// QOI_OP_DIFF
+					let byte: u8 = 0x40 | ((dr + 2) << 4) as u8 | ((dg + 2) << 2) as u8 | (db + 2) as u8;
+					file_write_byte(&file, byte);
+					total_diff = total_diff + 1;
+				} else {
+					let dr_dg: i32 = wrap_diff(dr, dg);
+					let db_dg: i32 = wrap_diff(db, dg);
+					if dg >= -32 && dg <= 31 && dr_dg >= -8 && dr_dg <= 7 && db_dg >= -8 && db_dg <= 7 {
+						// QOI_OP_LUMA
+						file_write_byte(&file, 0x80 | (dg + 32) as u8);
+						file_write_byte(&file, ((dr_dg + 8) << 4) as u8 | (db_dg + 8) as u8);
+						total_luma = total_luma + 1;
+					} else {
+						// QOI_OP_RGB
+						file_write_byte(&file, 0xFE);
+						file_write_byte(&file, color.r);
+						file_write_byte(&file, color.g);
+						file_write_byte(&file, color.b);
+						total_rgb = total_rgb + 1;
+					}
+				}
+			} else {
+				// QOI_OP_RGBA
+				file_write_byte(&file, 0xFF);
+				write_i32_be(&file, raw_color);
+				total_rgba = total_rgba + 1;
+			}
 		}
 
+		*(color_array + hash_index) = pack_color(color);
 		prev_color = color;
 		
 		i = i + 1;
+	}
+	if run_length != 0 {
+		file_write_byte(&file, 0xc0 | (run_length - 1) as u8);
+		run_length = 0;
+		total_run = total_run + 1;
 	}
 	// mark end of stream
 	file_write_s(&file, &"\0\0\0\0\0\0\0");
 	file_write_byte(&file, 1);
 	file_close(&file);
+
+	print(&"Total counts\n");
+	print(&"Total RUN: "); print_num(total_run);
+	print(&"Total INDEX: "); print_num(total_index);
+	print(&"Total DIFF: "); print_num(total_diff);
+	print(&"Total LUMA: "); print_num(total_luma);
+	print(&"Total RGB: "); print_num(total_rgb);
+	print(&"Total RGBA: "); print_num(total_rgba);
 }
 
 fn make_color(r: u8, g: u8, b: u8): i32 {
@@ -175,6 +278,7 @@ fn main(): i32 {
 			// *(canvas + i) = make_color(((x - 1) * (x - 1) - y * y) as u8, (x * x - y * y) as u8, ((x + 1) * (x + 1) - (y + 1) * (y + 1)) as u8);
 			*(canvas + i) = make_color(((width - x) * (width - x) / (y + 1)) as u8, (x * x / (y + 1)) as u8, (x - y + 1) as u8);
 			// *(canvas + i) = make_color(0, 0, (((width - x - 1) - y) / (x - y + 1)) as u8);
+			// *(canvas + i) = make_color(y as u8, y as u8, y as u8);
 			x = x + 1;
 		}
 		y = y + 1;
