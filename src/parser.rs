@@ -178,6 +178,7 @@ pub struct Scope {
 	pub parent: Option<Rc<Scope>>,
 	pub statements: Vec<RefCell<Statement>>,
 	pub variables: RefCell<Vec<Variable>>,
+	pub children: RefCell<Vec<Rc<Scope>>>,
 }
 
 impl std::fmt::Debug for Scope {
@@ -199,6 +200,7 @@ impl Scope {
 			parent,
 			statements: vec![],
 			variables: vec![].into(),
+			children: vec![].into(),
 		}
 	}
 }
@@ -212,6 +214,7 @@ pub struct Function {
 	pub return_type: TypeRef,
 	pub scope: Rc<Scope>,
 	pub is_struct_return: bool,
+	pub scope_size: RefCell<usize>,
 }
 
 impl Function {
@@ -224,6 +227,7 @@ impl Function {
 			return_type: TypeRef::unknown(),
 			scope: Rc::new(Scope::new(None)),
 			is_struct_return: false,
+			scope_size: 0.into(),
 		}
 	}
 }

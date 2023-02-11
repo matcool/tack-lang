@@ -56,6 +56,12 @@ impl Scope {
 	}
 }
 
+impl Function {
+	fn needs_cleanup(&self) -> bool {
+		*self.scope_size.borrow() != 0 || !self.arguments.is_empty() || self.is_struct_return
+	}
+}
+
 impl Compiler {
 	pub fn new(ast: AST) -> Compiler {
 		Compiler {
@@ -92,16 +98,14 @@ impl Compiler {
 		self.write(format!("{}:", function.name.clone()));
 		self.variables.borrow_mut().clear();
 		self.var_counter.set(0);
+		
+		let scope_size = function.scope.size(&self.ast) + function.scope.children.borrow().iter().map(|s| s.size(&self.ast)).sum::<usize>();
+		*function.scope_size.borrow_mut() = scope_size;
 
-		if !function.scope.variables.borrow().is_empty()
-			|| !function.arguments.is_empty()
-			|| function.is_struct_return
-		{
+		if function.needs_cleanup() {
 			self.write("push ebp");
 			self.write("mov ebp, esp");
-			if !function.scope.variables.borrow().is_empty() {
-				// TODO: save this in the function as to not calculate it every time
-				let scope_size = function.scope.size(&self.ast);
+			if scope_size != 0 {
 				self.write(format!("sub esp, {}", scope_size));
 			}
 		}
@@ -112,10 +116,9 @@ impl Compiler {
 	}
 
 	fn generate_return(&self, function: &Function) {
-		let vars = function.scope.variables.borrow();
-		if !vars.is_empty() || !function.arguments.is_empty() || function.is_struct_return {
-			if !vars.is_empty() {
-				let scope_size = function.scope.size(&self.ast);
+		let scope_size = *function.scope_size.borrow();
+		if function.needs_cleanup() {
+			if scope_size != 0 {
 				self.write(format!("add esp, {}", scope_size));
 			}
 			if function.is_struct_return {
@@ -375,8 +378,8 @@ impl Compiler {
 				if from == to && !to.reference && from.reference {
 					match self.ast.get_type_size(to) {
 						4 => self.write("mov eax, [eax]"),
-						2 => self.write("mov ax, WORD [eax]"),
-						1 => self.write("mov al, BYTE [eax]"),
+						2 => self.write("mov ax, WORD [eax]\nand eax, 0xffff"),
+						1 => self.write("mov al, BYTE [eax]\nand eax, 0xff"),
 						_ => todo!()
 					}
 				} else {

@@ -1,0 +1,26 @@
+// returns 6
+
+fn print(msg: str*): i32{
+	syscall(4, 1, msg.data, msg.size);
+	return msg.size;
+}
+
+fn main(): i32 {
+	let width: i32 = 256;
+	let height: i32 = 256;
+	print(&"welcome!\n");
+
+	let y: i32 = 0;
+	while y < height {
+		let x: i32 = 0;
+		while x < width {
+			let i: i32 = y * width + x;
+			x = x + 1;
+		}
+		y = y + 1;
+	}
+
+	let sick: str = "sick";
+	let sick2: str = "sick2";
+	return print(&"cool!\n");
+}

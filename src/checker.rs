@@ -244,6 +244,9 @@ impl TypeChecker<'_> {
 		scope: Rc<Scope>,
 		function: &Function,
 	) -> Result<(), TypeCheckerError> {
+		if !Rc::ptr_eq(&scope, &function.scope) {
+			function.scope.children.borrow_mut().push(Rc::clone(&scope));
+		}
 		for statement in &scope.statements {
 			self.check_statement(&mut statement.borrow_mut(), function, Rc::clone(&scope))?;
 		}
