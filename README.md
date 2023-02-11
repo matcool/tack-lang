@@ -22,8 +22,8 @@ fn main(): i32 {
 - [X] else statements
 - [X] else if 
 - [X] while statements
-- [ ] variable scoping in statements
-- [ ] string support
-- [ ] structs
+- [X] variable scoping in statements
+- [X] string support
+- [X] structs
 - [ ] external functions? (not writing my own malloc)
-- [ ] pointers
+- [X] pointers
