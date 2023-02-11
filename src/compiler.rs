@@ -10,8 +10,7 @@ use crate::{
 	checker::AST,
 	lexer::Operator,
 	parser::{
-		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind, Type,
-		Variable,
+		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind, Type
 	},
 };
 
@@ -325,7 +324,9 @@ impl Compiler {
 					Operator::Equals
 					| Operator::NotEquals
 					| Operator::LessThan
-					| Operator::GreaterThan => {
+					| Operator::LessThanEq
+					| Operator::GreaterThan
+					| Operator::GreaterThanEq => {
 						self.write("cmp ecx, eax");
 						match op {
 							Operator::Equals => self.write("sete al"),
@@ -372,7 +373,12 @@ impl Compiler {
 				let from = child.value_type;
 				let to = exp.value_type;
 				if from == to && !to.reference && from.reference {
-					self.write("mov eax, [eax]");
+					match self.ast.get_type_size(to) {
+						4 => self.write("mov eax, [eax]"),
+						2 => self.write("mov ax, WORD [eax]"),
+						1 => self.write("mov al, BYTE [eax]"),
+						_ => todo!()
+					}
 				} else {
 					let from = self.ast.get_type(from);
 					let to = self.ast.get_type(to);
@@ -381,7 +387,13 @@ impl Compiler {
 						(
 							Type::BuiltIn(_),
 							Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8 | BuiltInType::UPtr),
-						) => {}
+						) => {
+							let from_size = from.size(&self.ast);
+							let to_size = to.size(&self.ast);
+							if from_size == 1 && to_size > from_size {
+								self.write("and eax, 0xff");
+							}
+						}
 						(Type::Pointer(_), Type::BuiltIn(BuiltInType::UPtr)) => {}
 						(Type::Pointer(_), Type::Pointer(_)) => {}
 						(Type::BuiltIn(BuiltInType::UPtr), Type::Pointer(_)) => {}
@@ -460,6 +472,10 @@ impl Compiler {
 				self.compile_expression(&exp.children[0], function);
 				// since this evaluates to a reference,
 				// just keep it as a pointer
+			}
+			ExpressionKind::Operator(Operator::Negate) => {
+				self.compile_expression(&exp.children[0], function);
+				self.write("neg eax");
 			}
 			ExpressionKind::AsmLiteral(ref str) => {
 				self.write(str);

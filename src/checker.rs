@@ -616,17 +616,21 @@ impl TypeChecker<'_> {
 					Operator::Equals
 					| Operator::NotEquals
 					| Operator::GreaterThan
-					| Operator::LessThan => Ok(BUILTIN_TYPE_BOOL),
+					| Operator::GreaterThanEq
+					| Operator::LessThan
+					| Operator::LessThanEq => Ok(BUILTIN_TYPE_BOOL),
 					Operator::Assign => Ok(BUILTIN_TYPE_VOID),
 					_ => Ok(lhs.remove_reference()),
 				}
 			}
 			ExpressionKind::Operator(Operator::Negate) => {
-				let ty = self.check_expression(
+				self.check_expression(
 					&mut expression.children[0],
 					function,
 					Rc::clone(&scope),
 				)?;
+
+				let ty = self.promote_int_literal_into(&mut expression.children[0], BUILTIN_TYPE_I32);
 
 				if ty != BUILTIN_TYPE_I32 {
 					return Err(TypeCheckerError::TypeMismatch(format!(
