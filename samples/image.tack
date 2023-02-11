@@ -119,28 +119,22 @@ fn save_image(name: str*, pixels: i32*, width: i32, height: i32) {
 	file_write_byte(&file, 4); // RGBA
 	file_write_byte(&file, 0); // sRGB (idk what this means)
 	let i: i32 = 0;
-	let raw_color: i32;
-	let color: Color;
 	let prev_color: Color;
 	prev_color.r = 0;
 	prev_color.g = 0;
 	prev_color.b = 0;
 	prev_color.a = 255;
-	let dr: i32;
-	let dg: i32;
-	let db: i32;
-	let byte: u8;
 	while i < width * height {
-		raw_color = *(pixels + i);
-		color = unpack_color(raw_color);
+		let raw_color: i32 = *(pixels + i);
+		let color: Color = unpack_color(raw_color);
 		if color.a == prev_color.a {
-			dr = 2 + color.r as i32 - prev_color.r as i32;
-			dg = 2 + color.g as i32 - prev_color.g as i32;
-			db = 2 + color.b as i32 - prev_color.b as i32;
+			let dr: i32 = 2 + color.r as i32 - prev_color.r as i32;
+			let dg: i32 = 2 + color.g as i32 - prev_color.g as i32;
+			let db: i32 = 2 + color.b as i32 - prev_color.b as i32;
 			// FIXME: this doesnt account for wrap around as explained in spec
 			if dr >= 0 && dr <= 3 && dg >= 0 && dg <= 3 && db >= 0 && db <= 3 {
 				// QOI_OP_DIFF
-				byte = 0x40 | (dr << 4) as u8 | (dg << 2) as u8 | db as u8;
+				let byte: u8 = 0x40 | (dr << 4) as u8 | (dg << 2) as u8 | db as u8;
 				file_write_byte(&file, byte);
 			} else {
 				file_write_byte(&file, 0xFE); // QOI_OP_RGB
@@ -174,12 +168,10 @@ fn main(): i32 {
 	let canvas: i32* = alloc(width * height * 4) as i32*;
 
 	let y: i32 = 0;
-	let x: i32;
-	let i: i32;
 	while y < height {
-		x = 0;
+		let x: i32 = 0;
 		while x < width {
-			i = y * width + x;
+			let i: i32 = y * width + x;
 			// *(canvas + i) = make_color(((x - 1) * (x - 1) - y * y) as u8, (x * x - y * y) as u8, ((x + 1) * (x + 1) - (y + 1) * (y + 1)) as u8);
 			*(canvas + i) = make_color(((width - x) * (width - x) / (y + 1)) as u8, (x * x / (y + 1)) as u8, (x - y + 1) as u8);
 			// *(canvas + i) = make_color(0, 0, (((width - x - 1) - y) / (x - y + 1)) as u8);
