@@ -15,14 +15,14 @@ fn print(msg: str*) {
 	syscall(4, 1, msg.data, msg.size);
 }
 
-struct BufFile {
+struct File {
 	fd: i32;
 	buffer: u8*;
 	buffer_size: i32;
 	buffer_cap: i32;
 }
 
-fn open_file(name: str*): BufFile {
+fn open_file(name: str*): File {
 	let c_str: u8* = alloc(name.size + 1);
 	let i: i32 = 0;
 	while i < name.size {
@@ -34,7 +34,7 @@ fn open_file(name: str*): BufFile {
 	// open(c_str, O_CREAT, S_IRWXU)
 	let fd: i32 = syscall(5, c_str, 66, 448);
 
-	let file: BufFile;
+	let file: File;
 	file.fd = fd;
 	file.buffer = alloc(1024);
 	file.buffer_size = 0;
@@ -55,90 +55,121 @@ fn memcpy(dst: u8*, src: u8*, size: i32) {
 	}
 }
 
-fn buf_file_flush(file: BufFile*) {
+fn file_flush(file: File*) {
 	if file.buffer_size != 0 {
 		file_write_raw(file.fd, file.buffer, file.buffer_size);
 		file.buffer_size = 0;
 	}
 }
 
-fn buf_file_write(file: BufFile*, data: u8*, size: i32) {
+fn file_write(file: File*, data: u8*, size: i32) {
 	if size > file.buffer_cap {
-		buf_file_flush(file);
+		file_flush(file);
 		file_write_raw(file.fd, data, size);
 	} else {
-		let space_left: i32 = file.buffer_cap - file.buffer_size;
-		if space_left < size {
-			buf_file_flush(file);
-			memcpy(file.buffer, data, size);
-			file.buffer_size = size;
-		} else {
-			memcpy(file.buffer + file.buffer_size, data, size);
-			file.buffer_size = file.buffer_size + size;
+		if file.buffer_cap - file.buffer_size < size {
+			file_flush(file);
 		}
+		memcpy(file.buffer + file.buffer_size, data, size);
+		file.buffer_size = file.buffer_size + size;
 	}
 }
 
-fn buf_file_write_s(file: BufFile*, msg: str*) {
-	buf_file_write(file, msg.data, msg.size);
+fn file_write_s(file: File*, msg: str*) {
+	file_write(file, msg.data, msg.size);
 }
 
-fn buf_file_close(file: BufFile*) {
-	buf_file_flush(file);
+fn file_close(file: File*) {
+	file_flush(file);
 	syscall(6, file.fd);
 }
 
-fn buf_file_write_byte(file: BufFile*, byte: u8) {
-	buf_file_write(file, &byte, 1);
+fn file_write_byte(file: File*, byte: u8) {
+	file_write(file, &byte, 1);
 }
 
-fn write_i32_be(file: BufFile*, value: i32) {
-	buf_file_write_byte(file, ((value & 0xFF000000) / 0x01000000) as u8);
-	buf_file_write_byte(file, ((value & 0x00FF0000) / 0x00010000) as u8);
-	buf_file_write_byte(file, ((value & 0x0000FF00) / 0x00000100) as u8);
-	buf_file_write_byte(file,  (value & 0x000000FF) as u8);
+fn write_i32_be(file: File*, value: i32) {
+	file_write_byte(file, (value >> 24) as u8);
+	file_write_byte(file, (value >> 16) as u8);
+	file_write_byte(file, (value >> 8) as u8);
+	file_write_byte(file, value as u8);
 }
 
-// use qoi as a glorified ppm pretty much
+struct Color {
+	r: u8;
+	g: u8;
+	b: u8;
+	a: u8;
+}
+
+fn unpack_color(color: i32): Color {
+	let res: Color;
+	res.r = (color >> 24) as u8;
+	res.g = (color >> 16) as u8;
+	res.b = (color >> 8) as u8;
+	res.a = (color) as u8;
+	return res;
+}
+
 fn save_image(name: str*, pixels: i32*, width: i32, height: i32) {
-	let file: BufFile = open_file(name);
-	buf_file_write_s(&file, &"qoif");
+	let file: File = open_file(name);
+	file_write_s(&file, &"qoif");
 	write_i32_be(&file, width);
 	write_i32_be(&file, height);
-	buf_file_write_byte(&file, 4); // RGBA
-	buf_file_write_byte(&file, 0); // sRGB (idk what this means)
+	file_write_byte(&file, 4); // RGBA
+	file_write_byte(&file, 0); // sRGB (idk what this means)
 	let i: i32 = 0;
-	let color: i32;
-	let a: u8;
-	let r: u8;
-	let g: u8;
-	let b: u8;
+	let raw_color: i32;
+	let color: Color;
+	let prev_color: Color;
+	prev_color.r = 0;
+	prev_color.g = 0;
+	prev_color.b = 0;
+	prev_color.a = 255;
+	let dr: i32;
+	let dg: i32;
+	let db: i32;
+	let byte: u8;
 	while i < width * height {
-		buf_file_write_byte(&file, 0xFF); // QOI_OP_RGBA
-		color = *(pixels + i);
-		a = ((color & 0xFF000000) / 0x01000000) as u8;
-		r = ((color & 0x00FF0000) / 0x00010000) as u8;
-		g = ((color & 0x0000FF00) / 0x00000100) as u8;
-		b =  (color & 0x000000FF) as u8;
-		buf_file_write_byte(&file, r);
-		buf_file_write_byte(&file, g);
-		buf_file_write_byte(&file, b);
-		buf_file_write_byte(&file, a);
+		raw_color = *(pixels + i);
+		color = unpack_color(raw_color);
+		if color.a == prev_color.a {
+			dr = 2 + color.r as i32 - prev_color.r as i32;
+			dg = 2 + color.g as i32 - prev_color.g as i32;
+			db = 2 + color.b as i32 - prev_color.b as i32;
+			// FIXME: this doesnt account for wrap around as explained in spec
+			if dr >= 0 && dr <= 3 && dg >= 0 && dg <= 3 && db >= 0 && db <= 3 {
+				// QOI_OP_DIFF
+				byte = 0x40 | (dr << 4) as u8 | (dg << 2) as u8 | db as u8;
+				file_write_byte(&file, byte);
+			} else {
+				file_write_byte(&file, 0xFE); // QOI_OP_RGB
+				file_write_byte(&file, color.r);
+				file_write_byte(&file, color.g);
+				file_write_byte(&file, color.b);
+			}
+		} else {
+			file_write_byte(&file, 0xFF); // QOI_OP_RGBA
+			write_i32_be(&file, raw_color);
+		}
+
+		prev_color = color;
+		
 		i = i + 1;
 	}
 	// mark end of stream
-	buf_file_write_s(&file, &"\0\0\0\0\0\0\0");
-	buf_file_write_byte(&file, 1);
-	buf_file_close(&file);
+	file_write_s(&file, &"\0\0\0\0\0\0\0");
+	file_write_byte(&file, 1);
+	file_close(&file);
 }
 
 fn make_color(r: u8, g: u8, b: u8): i32 {
-	return 0xFF000000 | ((r as i32) * 0x10000) | ((g as i32) * 0x100) | (b as i32);
+	return r as i32 << 24 | g as i32 << 16 | b as i32 << 8 | 0xFF;
 }
 
 fn main(): i32 {
-	let width: i32 = 1024;
-	let height: i32 = 1024;
+	let width: i32 = 256;
+	let height: i32 = 256;
 	print(&"welcome!\n");
 	let canvas: i32* = alloc(width * height * 4) as i32*;
 
@@ -149,7 +180,9 @@ fn main(): i32 {
 		x = 0;
 		while x < width {
 			i = y * width + x;
-			*(canvas + i) = make_color((x & 0xFF) as u8, (y & 0xFF) as u8, 0);
+			// *(canvas + i) = make_color(((x - 1) * (x - 1) - y * y) as u8, (x * x - y * y) as u8, ((x + 1) * (x + 1) - (y + 1) * (y + 1)) as u8);
+			*(canvas + i) = make_color(((width - x) * (width - x) / (y + 1)) as u8, (x * x / (y + 1)) as u8, (x - y + 1) as u8);
+			// *(canvas + i) = make_color(0, 0, (((width - x - 1) - y) / (x - y + 1)) as u8);
 			x = x + 1;
 		}
 		y = y + 1;
