@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::process::{Command, Output};
 
 use crate::checker::TypeChecker;
 use crate::compiler::Compiler;
@@ -6,13 +6,35 @@ use crate::graph::GraphGen;
 use crate::lexer::*;
 use crate::parser::Parser;
 
+pub fn invoke_command(args: String) -> Output {
+	return if cfg!(target_os = "windows") {
+		Command::new("cmd")
+			.arg(args)
+			.output()
+			.unwrap()
+	}
+	else {
+		Command::new("bash")
+			.arg("-c")
+			.arg(args)
+			.output()
+			.unwrap()
+	};
+}
+
 pub fn run<S: AsRef<std::path::Path>>(
 	input: S,
 	output_path: Option<String>,
 	graph_file: Option<String>,
 	build: bool,
 ) {
-	let contents = std::fs::read_to_string(input).unwrap();
+	let contents = match std::fs::read_to_string(input) {
+		Ok(value) => value,
+		Err(value) => {
+			println!("Input error: {value}");
+			std::process::exit(1)
+		}
+	};
 
 	let mut lexer = Lexer::new(contents.chars().peekable());
 	let tokens: Vec<Token> = lexer.iter().collect();
@@ -39,18 +61,10 @@ pub fn run<S: AsRef<std::path::Path>>(
 	if let Some(output) = output_path {
 		std::fs::write(&output, include_str!("nasm.asm").to_string() + &asm_output).unwrap();
 		if build {
-			// use bash -c because im on windows and i want it to run on wsl :-)
-			Command::new("bash")
-				.arg("-c")
-				.arg(format!("nasm -f elf \"{0}\" -F dwarf -o \"{0}.o\"", output))
-				.output()
-				.unwrap();
-
-			Command::new("bash")
-				.arg("-c")
-				.arg(format!("ld -m elf_i386 \"{0}.o\" -o \"{0}\"", output))
-				.output()
-				.unwrap();
+			// invoke nasm and output file
+			invoke_command(format!("nasm -f elf \"{0}\" -F dwarf -o \"{0}.o\"", output));
+			// invoke ld with object file
+			invoke_command(format!("ld -m elf_i386 \"{0}.o\" -o \"{0}\"", output));
 		}
 	} else {
 		print!("Compiler output:\n{}", asm_output);
