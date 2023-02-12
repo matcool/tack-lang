@@ -27,3 +27,7 @@ fn main(): i32 {
 - [X] structs
 - [ ] external functions? (not writing my own malloc)
 - [X] pointers
+- [ ] better build system (use temp folder maybe)
+- [ ] import
+- [X] structs as function args
+- [ ] arrays

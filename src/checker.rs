@@ -148,6 +148,7 @@ pub enum TypeCheckerError {
 const BUILTIN_TYPE_I32: TypeRef = TypeRef::new(0);
 const BUILTIN_TYPE_U8: TypeRef = TypeRef::new(1);
 const BUILTIN_TYPE_BOOL: TypeRef = TypeRef::new(2);
+#[allow(unused)]
 const BUILTIN_TYPE_UPTR: TypeRef = TypeRef::new(3);
 const BUILTIN_TYPE_VOID: TypeRef = TypeRef::new(4);
 const BUILTIN_TYPE_INT_LITERAL: TypeRef = TypeRef::new(5);
@@ -333,6 +334,7 @@ impl TypeChecker<'_> {
 
 				self.check_scope(Rc::clone(inner_scope), function)?;
 			}
+			#[allow(unreachable_patterns)]
 			ref k => {
 				todo!("{:?}", k);
 			}
@@ -627,13 +629,10 @@ impl TypeChecker<'_> {
 				}
 			}
 			ExpressionKind::Operator(Operator::Negate) => {
-				self.check_expression(
-					&mut expression.children[0],
-					function,
-					Rc::clone(&scope),
-				)?;
+				self.check_expression(&mut expression.children[0], function, Rc::clone(&scope))?;
 
-				let ty = self.promote_int_literal_into(&mut expression.children[0], BUILTIN_TYPE_I32);
+				let ty =
+					self.promote_int_literal_into(&mut expression.children[0], BUILTIN_TYPE_I32);
 
 				if ty != BUILTIN_TYPE_I32 {
 					return Err(TypeCheckerError::TypeMismatch(format!(
@@ -670,7 +669,9 @@ impl TypeChecker<'_> {
 					}
 					for (arg, exp) in func.arguments.iter().zip(expression.children.iter_mut()) {
 						self.check_expression(exp, function, Rc::clone(&scope))?;
-						exp.cast_if_reference();
+						if !self.ast.is_struct(exp.value_type) {
+							exp.cast_if_reference();
+						}
 
 						let ty = self.promote_int_literal_into(exp, arg.ty);
 
@@ -687,10 +688,12 @@ impl TypeChecker<'_> {
 							name: "$struct_space".into(),
 							ty: func.return_type,
 						});
+						Ok(func.return_type.add_reference())
+					} else {
+						Ok(func.return_type)
 					}
-					Ok(func.return_type)
 				} else if name == "syscall" {
-					if expression.children.len() > 7 || expression.children.len() < 1 {
+					if expression.children.len() > 7 || expression.children.is_empty() {
 						return Err(TypeCheckerError::ArgumentCountMismatch);
 					}
 					for exp in expression.children.iter_mut() {

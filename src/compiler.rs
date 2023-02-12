@@ -10,7 +10,7 @@ use crate::{
 	checker::AST,
 	lexer::Operator,
 	parser::{
-		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind, Type
+		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind, Type,
 	},
 };
 
@@ -44,6 +44,14 @@ impl Type {
 				.sum(),
 		}
 	}
+	pub fn aligned_size(&self, ast: &AST) -> usize {
+		let size = self.size(ast);
+		if size % POINTER_SIZE == 0 {
+			size
+		} else {
+			size + (POINTER_SIZE - (size % POINTER_SIZE))
+		}
+	}
 }
 
 impl Scope {
@@ -59,6 +67,12 @@ impl Scope {
 impl Function {
 	fn needs_cleanup(&self) -> bool {
 		*self.scope_size.borrow() != 0 || !self.arguments.is_empty() || self.is_struct_return
+	}
+	fn arguments_size(&self, ast: &AST) -> usize {
+		self.arguments
+			.iter()
+			.map(|arg| ast.get_type(arg.ty).aligned_size(ast))
+			.sum()
 	}
 }
 
@@ -98,8 +112,15 @@ impl Compiler {
 		self.write(format!("{}:", function.name.clone()));
 		self.variables.borrow_mut().clear();
 		self.var_counter.set(0);
-		
-		let scope_size = function.scope.size(&self.ast) + function.scope.children.borrow().iter().map(|s| s.size(&self.ast)).sum::<usize>();
+
+		let scope_size = function.scope.size(&self.ast)
+			+ function
+				.scope
+				.children
+				.borrow()
+				.iter()
+				.map(|s| s.size(&self.ast))
+				.sum::<usize>();
 		*function.scope_size.borrow_mut() = scope_size;
 
 		if function.needs_cleanup() {
@@ -213,6 +234,7 @@ impl Compiler {
 			StatementKind::Block(ref scope) => {
 				self.compile_scope(Rc::clone(scope), function);
 			}
+			#[allow(unreachable_patterns)]
 			ref k => {
 				todo!("{:?}", k);
 			}
@@ -262,18 +284,24 @@ impl Compiler {
 					self.write(format!("lea eax, [ebp - {}]", val));
 				} else {
 					// hopefully its a function argument, otherwise type checker haveth failed us
-					let index = function
+					let arg_index = function
 						.arguments
 						.iter()
 						.enumerate()
 						.find(|(_, x)| &x.name == name)
 						.expect("expected variable.. type checker went wrong somewhere")
 						.0;
-					let mut stack_index = function.arguments.len() - index - 1 + 2;
+					// stack looks like this
+					// ↓ ebp
+					// old_ebp ret_ptr struct_ret_ptr? arg_2 arg_1 arg_0
+					let mut stack_index = 2 * POINTER_SIZE;
 					if function.is_struct_return {
-						stack_index += 1;
+						stack_index += POINTER_SIZE;
 					}
-					self.write(format!("lea eax, [ebp + {}]", stack_index * 4));
+					for arg in function.arguments.iter().skip(arg_index + 1) {
+						stack_index += self.ast.get_type(arg.ty).aligned_size(&self.ast);
+					}
+					self.write(format!("lea eax, [ebp + {}]", stack_index));
 				}
 			}
 			ExpressionKind::Operator(Operator::Dot) => {
@@ -380,7 +408,7 @@ impl Compiler {
 						4 => self.write("mov eax, [eax]"),
 						2 => self.write("mov ax, WORD [eax]\nand eax, 0xffff"),
 						1 => self.write("mov al, BYTE [eax]\nand eax, 0xff"),
-						_ => todo!()
+						_ => todo!(),
 					}
 				} else {
 					let from = self.ast.get_type(from);
@@ -437,7 +465,16 @@ impl Compiler {
 			ExpressionKind::Call(ref name) => {
 				for child in &exp.children {
 					self.compile_expression(child, function);
-					self.write("push eax");
+					if self.ast.is_struct(child.value_type) {
+						let size = self.ast.get_type_size(child.value_type);
+						self.write(format!(
+							"sub esp, {}",
+							self.ast.get_type(child.value_type).aligned_size(&self.ast)
+						));
+						self.copy_memory("esp", "eax", "ecx", size);
+					} else {
+						self.write("push eax");
+					}
 				}
 				let func = self
 					.ast
@@ -454,7 +491,7 @@ impl Compiler {
 
 					// cheat and just put a pointer to this on eax
 					self.write(format!("lea eax, [ebp - {}]", struct_offset));
-					self.write(format!("push eax"));
+					self.write("push eax");
 				}
 
 				self.write(format!("call {name}"));
@@ -464,7 +501,7 @@ impl Compiler {
 					self.write(format!("lea eax, [ebp - {}]", struct_offset));
 				}
 				if !func.arguments.is_empty() {
-					self.write(format!("add esp, {}", func.arguments.len() * 4));
+					self.write(format!("add esp, {}", func.arguments_size(&self.ast)));
 				}
 			}
 			ExpressionKind::Operator(Operator::Reference) => {

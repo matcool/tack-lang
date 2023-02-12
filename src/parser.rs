@@ -77,7 +77,10 @@ impl Operator {
 			Operator::BitOr => 3,
 			Operator::BitAnd => 4,
 			Operator::Equals | Operator::NotEquals => 5,
-			Operator::GreaterThan | Operator::LessThan | Operator::GreaterThanEq | Operator::LessThanEq => 6,
+			Operator::GreaterThan
+			| Operator::LessThan
+			| Operator::GreaterThanEq
+			| Operator::LessThanEq => 6,
 			Operator::BitShiftLeft | Operator::BitShiftRight => 7,
 			Operator::Add | Operator::Sub => 8,
 			Operator::Multiply | Operator::Divide | Operator::Mod => 9,

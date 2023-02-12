@@ -32,7 +32,7 @@ fn print_num(num: i32) {
 	syscall(4, 1, "\n".data, 1);
 }
 
-fn print(msg: str*) {
+fn print(msg: str) {
 	syscall(4, 1, msg.data, msg.size);
 }
 
@@ -43,7 +43,7 @@ struct File {
 	buffer_cap: i32;
 }
 
-fn open_file(name: str*): File {
+fn open_file(name: str): File {
 	let c_str: u8* = alloc(name.size + 1);
 	let i: i32 = 0;
 	while i < name.size {
@@ -96,7 +96,7 @@ fn file_write(file: File*, data: u8*, size: i32) {
 	}
 }
 
-fn file_write_s(file: File*, msg: str*) {
+fn file_write_s(file: File*, msg: str) {
 	file_write(file, msg.data, msg.size);
 }
 
@@ -152,11 +152,11 @@ fn wrap_diff(value: i32, prev: i32): i32 {
 	return diff;
 }
 
-fn save_image(name: str*, pixels: i32*, width: i32, height: i32) {
+fn save_image(name: str, pixels: i32*, width: i32, height: i32) {
 	let file: File = open_file(name);
 
 	// file header
-	file_write_s(&file, &"qoif");
+	file_write_s(&file, "qoif");
 	write_i32_be(&file, width);
 	write_i32_be(&file, height);
 	file_write_byte(&file, 4); // RGBA
@@ -247,17 +247,17 @@ fn save_image(name: str*, pixels: i32*, width: i32, height: i32) {
 		total_run = total_run + 1;
 	}
 	// mark end of stream
-	file_write_s(&file, &"\0\0\0\0\0\0\0");
+	file_write_s(&file, "\0\0\0\0\0\0\0");
 	file_write_byte(&file, 1);
 	file_close(&file);
 
-	print(&"Total counts\n");
-	print(&"Total RUN: "); print_num(total_run);
-	print(&"Total INDEX: "); print_num(total_index);
-	print(&"Total DIFF: "); print_num(total_diff);
-	print(&"Total LUMA: "); print_num(total_luma);
-	print(&"Total RGB: "); print_num(total_rgb);
-	print(&"Total RGBA: "); print_num(total_rgba);
+	print("Total counts\n");
+	print("Total RUN: "); print_num(total_run);
+	print("Total INDEX: "); print_num(total_index);
+	print("Total DIFF: "); print_num(total_diff);
+	print("Total LUMA: "); print_num(total_luma);
+	print("Total RGB: "); print_num(total_rgb);
+	print("Total RGBA: "); print_num(total_rgba);
 }
 
 fn make_color(r: u8, g: u8, b: u8): i32 {
@@ -267,7 +267,7 @@ fn make_color(r: u8, g: u8, b: u8): i32 {
 fn main(): i32 {
 	let width: i32 = 256;
 	let height: i32 = 256;
-	print(&"welcome!\n");
+	print("welcome!\n");
 	let canvas: i32* = alloc(width * height * 4) as i32*;
 
 	let y: i32 = 0;
@@ -284,9 +284,9 @@ fn main(): i32 {
 		y = y + 1;
 	}
 
-	print(&"going to save!\n");
-	save_image(&"./image.qoi", canvas, width, height);
-	print(&"saved\n");
+	print("going to save!\n");
+	save_image("./image.qoi", canvas, width, height);
+	print("saved\n");
 
 	return 0;
 }
