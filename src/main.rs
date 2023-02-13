@@ -1,5 +1,5 @@
 use path_slash::PathBufExt;
-use std::path::PathBuf;
+use std::{path::PathBuf, process::Command};
 
 use tack::run::{run, invoke_command};
 
@@ -19,7 +19,22 @@ Options:
 	std::process::exit(1);
 }
 
+fn check_compatibility() {
+	if cfg!(target_os = "windows") {
+		match Command::new("bash").arg("--version").output() {
+			Err(_) => {
+				println!("Error: WSL installation not found. Please install WSL and try again.");
+				std::process::exit(1)
+			},
+			_ => {},
+		};
+	}
+}
+
 fn main() {
+	check_compatibility();
+	println!("Compatible...");
+
 	let input = match std::env::args().nth(1) {
 		Some(value) =>
 			if value == "-h" || value == "--help" { print_help_and_exit() }
@@ -48,11 +63,10 @@ fn main() {
 	run(input, output.clone(), Some("graph.gv".into()), build);
 
 	if output.is_some() && build && execute {
-		let out = invoke_command(format!(
-			"./{}", PathBuf::from(output.unwrap()).to_slash().unwrap()
-		));
+		let filename = PathBuf::from(output.unwrap()).to_slash().unwrap().to_string();
+		let out = invoke_command(format!("./{}", filename));
 		println!(
-			"Process returned code {}, output: {}",
+			"\"{filename}\" returned code {}, output: {}",
 			out.status.code().unwrap(),
 			String::from_utf8(out.stdout).unwrap()
 		);
