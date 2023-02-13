@@ -8,7 +8,7 @@ pub struct GraphGen {
 	counter: i32,
 }
 
-fn escape_rust_for_graphviz(str: &String) -> String {
+fn escape_rust_for_graphviz(str: &str) -> String {
 	str.replace('"', "\\\"").replace('{', "[").replace('}', "]")
 }
 
@@ -19,7 +19,7 @@ fn format_type(ast: &AST, type_ref: &TypeRef) -> String {
 	let ty = ast.get_type(*type_ref);
 	format!(
 		"{}{}",
-		ty.name(&ast),
+		ty.name(ast),
 		if type_ref.reference { "&" } else { "" }
 	)
 }

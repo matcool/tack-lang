@@ -21,11 +21,9 @@ Options:
 }
 
 fn check_compatibility() {
-	if cfg!(windows) {
-		if Command::new("bash").arg("--version").output().is_err() {
-			println!("Error: WSL installation not found. Please install WSL and try again.");
-			std::process::exit(1)
-		}
+	if cfg!(windows) && Command::new("bash").arg("--version").output().is_err() {
+		println!("Error: WSL installation not found. Please install WSL and try again.");
+		std::process::exit(1)
 	}
 }
 
@@ -63,16 +61,15 @@ fn main() {
 
 	run(input, output.clone(), Some("graph.gv".into()), build);
 
-	if output.is_some() && build && execute {
-		let filename = PathBuf::from(output.unwrap())
-			.to_slash()
-			.unwrap()
-			.to_string();
-		let out = invoke_command(format!("./{}", filename));
-		println!(
-			"\"{filename}\" returned code {}, output:\n{}",
-			out.status.code().unwrap(),
-			String::from_utf8(out.stdout).unwrap()
-		);
+	if let Some(output) = output {
+		if build && execute {
+			let filename = PathBuf::from(output).to_slash().unwrap().to_string();
+			let out = invoke_command(format!("./{}", filename));
+			println!(
+				"\"{filename}\" returned code {}, output:\n{}",
+				out.status.code().unwrap(),
+				String::from_utf8(out.stdout).unwrap()
+			);
+		}
 	}
 }

@@ -60,16 +60,10 @@ pub enum TokenKind {
 	StringLiteral(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Span {
 	pub line: i32,
 	pub column: i32,
-}
-
-impl Default for Span {
-	fn default() -> Self {
-		Self { line: 0, column: 0 }
-	}
 }
 
 #[derive(Debug, Clone)]

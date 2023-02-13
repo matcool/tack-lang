@@ -43,26 +43,20 @@ impl Type {
 				BuiltInType::Void => "void".into(),
 				BuiltInType::IntLiteral => "<int>".into(),
 			},
-			Type::Pointer(inner) => format!("{}*", ast.get_type(*inner).name(&ast)),
+			Type::Pointer(inner) => format!("{}*", ast.get_type(*inner).name(ast)),
 			Type::Struct(str) => str.name.clone(),
-			Type::Array(inner, size) => format!("{}[{size}]", ast.get_type(*inner).name(&ast)),
+			Type::Array(inner, size) => format!("{}[{size}]", ast.get_type(*inner).name(ast)),
 		}
 	}
 }
 
+#[derive(Default)]
 pub struct AST {
 	pub functions: Vec<Function>,
 	pub types: Vec<Rc<Type>>,
 }
 
 impl AST {
-	pub fn new() -> Self {
-		Self {
-			functions: vec![],
-			types: vec![],
-		}
-	}
-
 	fn find_type<P: FnMut(&&Rc<Type>) -> bool>(&self, predicate: P) -> Option<TypeRef> {
 		self.types
 			.iter()
@@ -76,7 +70,7 @@ impl AST {
 	}
 
 	fn find_type_by_name(&self, name: &String) -> Option<TypeRef> {
-		self.find_type(|&t| name == &t.name(&self))
+		self.find_type(|&t| name == &t.name(self))
 	}
 
 	fn add_type(&mut self, ty: Type) -> TypeRef {
@@ -176,7 +170,7 @@ impl TypeChecker<'_> {
 	pub fn new(parser: &'_ Parser) -> TypeChecker {
 		TypeChecker {
 			parser,
-			ast: AST::new(),
+			ast: AST::default(),
 		}
 	}
 

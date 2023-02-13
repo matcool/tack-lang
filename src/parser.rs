@@ -92,13 +92,10 @@ impl Operator {
 		}
 	}
 	pub fn is_binary(&self) -> bool {
-		match self {
-			Operator::Not => false,
-			Operator::Negate => false,
-			Operator::Dereference => false,
-			Operator::Reference => false,
-			_ => true,
-		}
+		!matches!(
+			self,
+			Operator::Not | Operator::Negate | Operator::Dereference | Operator::Reference
+		)
 	}
 }
 
