@@ -33,18 +33,19 @@ impl PartialEq for TypeRef {
 }
 
 impl Type {
-	pub fn name(&self) -> Option<String> {
+	pub fn name(&self, ast: &AST) -> String {
 		match self {
-			Type::BuiltIn(builtin) => Some(match builtin {
+			Type::BuiltIn(builtin) => match builtin {
 				BuiltInType::I32 => "i32".into(),
 				BuiltInType::U8 => "u8".into(),
 				BuiltInType::UPtr => "uptr".into(),
 				BuiltInType::Bool => "bool".into(),
 				BuiltInType::Void => "void".into(),
 				BuiltInType::IntLiteral => "<int>".into(),
-			}),
-			Type::Pointer(_) => None,
-			Type::Struct(str) => Some(str.name.clone()),
+			},
+			Type::Pointer(inner) => format!("{}*", ast.get_type(*inner).name(&ast)),
+			Type::Struct(str) => str.name.clone(),
+			Type::Array(inner, size) => format!("{}[{size}]", ast.get_type(*inner).name(&ast)),
 		}
 	}
 }
@@ -75,7 +76,7 @@ impl AST {
 	}
 
 	fn find_type_by_name(&self, name: &String) -> Option<TypeRef> {
-		self.find_type(|&t| t.name().map_or(false, |s| &s == name))
+		self.find_type(|&t| name == &t.name(&self))
 	}
 
 	fn add_type(&mut self, ty: Type) -> TypeRef {
@@ -95,8 +96,8 @@ impl AST {
 		self.get_type(type_ref).size(self)
 	}
 
-	pub fn is_struct(&self, type_ref: TypeRef) -> bool {
-		matches!(self.get_type(type_ref).as_ref(), Type::Struct(_))
+	pub fn is_struct_or_array(&self, type_ref: TypeRef) -> bool {
+		matches!(self.get_type(type_ref).as_ref(), Type::Struct(_) | Type::Array(..))
 	}
 
 	pub fn is_pointer(&self, type_ref: TypeRef) -> bool {
@@ -225,7 +226,7 @@ impl TypeChecker<'_> {
 		{
 			let mut function = function.borrow_mut();
 			function.return_type = self.check_parsed_type(&function.parsed_return_type)?;
-			function.is_struct_return = self.ast.is_struct(function.return_type);
+			function.is_struct_return = self.ast.is_struct_or_array(function.return_type);
 
 			let mut args = Vec::new();
 			for arg in &function.parsed_arguments {
@@ -258,14 +259,7 @@ impl TypeChecker<'_> {
 		let mut name = String::from("??");
 		if !type_ref.is_unknown() {
 			let ty = self.ast.get_type(type_ref);
-			match ty.as_ref() {
-				Type::Pointer(inner) => name = format!("{}*", self.format_type(*inner)),
-				_ => {
-					if let Some(ty_name) = ty.name() {
-						name = ty_name;
-					}
-				}
-			}
+			name = ty.name(&self.ast);
 		}
 		if type_ref.reference {
 			name.push('&');
@@ -612,7 +606,7 @@ impl TypeChecker<'_> {
 				}
 
 				// to fix rhs on struct assignment being reference, when it should be kept for compiler
-				if op != &Operator::Assign || !self.ast.is_struct(expression.children[1].value_type)
+				if op != &Operator::Assign || !self.ast.is_struct_or_array(expression.children[1].value_type)
 				{
 					expression.children[1].cast_if_reference();
 				}
@@ -669,7 +663,7 @@ impl TypeChecker<'_> {
 					}
 					for (arg, exp) in func.arguments.iter().zip(expression.children.iter_mut()) {
 						self.check_expression(exp, function, Rc::clone(&scope))?;
-						if !self.ast.is_struct(exp.value_type) {
+						if !self.ast.is_struct_or_array(exp.value_type) {
 							exp.cast_if_reference();
 						}
 
@@ -750,6 +744,34 @@ impl TypeChecker<'_> {
 				// should probably not be intented behavior
 				Ok(BUILTIN_TYPE_STR.add_reference())
 			}
+			ExpressionKind::ArrayLiteral => {
+				let mut guessed_type = TypeRef::unknown();
+				for exp in expression.children.iter_mut() {
+					self.check_expression(exp, function, Rc::clone(&scope))?;
+					// check if its struct..
+					exp.cast_if_reference();
+
+					let ty = exp.value_type;
+					if ty != BUILTIN_TYPE_INT_LITERAL {
+						if guessed_type.is_unknown() {
+							guessed_type = ty;
+						} else if ty != guessed_type {
+							return Err(TypeCheckerError::TypeMismatch(format!("expected {}, got {}", self.format_type(guessed_type), self.format_type(ty))));
+						}
+					}
+				}
+
+				if guessed_type.is_unknown() && !expression.children.is_empty() {
+					guessed_type = BUILTIN_TYPE_INT_LITERAL;
+				} else {
+					for exp in expression.children.iter_mut() {
+						self.promote_int_literal_into(exp, guessed_type);
+					}
+				}
+				// copy StringLiteral behavior, workaround while the compiler is really dumb
+				// and cant cast struct& to struct
+				Ok(self.ast.find_type_or_add(Type::Array(guessed_type, expression.children.len())).add_reference())
+			}
 			k => {
 				todo!("{:?}", k)
 			}
@@ -765,6 +787,10 @@ impl TypeChecker<'_> {
 			ParsedType::Pointer(inner) => {
 				let inner = self.check_parsed_type(inner)?;
 				Ok(self.ast.find_type_or_add(Type::Pointer(inner)))
+			}
+			ParsedType::Array(inner, size) => {
+				let inner = self.check_parsed_type(inner)?;
+				Ok(self.ast.find_type_or_add(Type::Array(inner, *size)))
 			}
 			ParsedType::Unknown => unreachable!(),
 		}

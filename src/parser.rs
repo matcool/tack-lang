@@ -29,6 +29,7 @@ pub enum Type {
 	BuiltIn(BuiltInType),
 	Pointer(TypeRef),
 	Struct(StructType),
+	Array(TypeRef, usize),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -58,6 +59,7 @@ impl TypeRef {
 pub enum ParsedType {
 	Name(String),
 	Pointer(Box<ParsedType>),
+	Array(Box<ParsedType>, usize),
 	Unknown, // used as a default value, shouldnt be used anywhere
 }
 
@@ -126,6 +128,7 @@ pub enum ExpressionKind {
 	ParsedCast(ParsedType),
 	AsmLiteral(String),
 	StringLiteral(String),
+	ArrayLiteral,
 }
 
 #[derive(Debug)]
@@ -173,7 +176,7 @@ impl Statement {
 	}
 
 	fn requires_semicolon(&self) -> bool {
-		!matches!(&self.kind, StatementKind::If(_) | StatementKind::While(_))
+		!matches!(&self.kind, StatementKind::If(_) | StatementKind::While(_) | StatementKind::Block(_))
 	}
 }
 
@@ -320,7 +323,7 @@ impl Parser {
 							self.next()?;
 							function.parsed_return_type = self.parse_type()?;
 						}
-						TokenKind::LeftBracket => {
+						TokenKind::LeftBrace => {
 							function.parsed_return_type = ParsedType::Name("void".to_string());
 						}
 						_ => {
@@ -340,9 +343,9 @@ impl Parser {
 						fields: vec![],
 					};
 
-					expect_token!(self.next()?, TokenKind::LeftBracket)?;
+					expect_token!(self.next()?, TokenKind::LeftBrace)?;
 
-					while !matches!(self.peek()?.kind, TokenKind::RightBracket) {
+					while !matches!(self.peek()?.kind, TokenKind::RightBrace) {
 						parsed_struct.fields.push(self.parse_var_decl()?);
 						expect_token!(self.next()?, TokenKind::Semicolon)?;
 					}
@@ -386,8 +389,8 @@ impl Parser {
 	}
 
 	fn parse_block(&mut self, statements: &mut Vec<RefCell<Statement>>) -> Result<(), ParserError> {
-		expect_token!(self.next()?, TokenKind::LeftBracket)?;
-		while !matches!(self.peek()?.kind, TokenKind::RightBracket) {
+		expect_token!(self.next()?, TokenKind::LeftBrace)?;
+		while !matches!(self.peek()?.kind, TokenKind::RightBrace) {
 			let stmt = self.parse_statement()?;
 			let semi = stmt.requires_semicolon();
 			statements.push(stmt.into());
@@ -415,10 +418,23 @@ impl Parser {
 	fn parse_type(&mut self) -> Result<ParsedType, ParserError> {
 		let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
 		let ty = ParsedType::Name(name);
-		if self.peek()?.kind == TokenKind::Operator(Operator::Multiply) {
-			self.next()?; // *
-			  // TODO: multiple layers of pointers
-			return Ok(ParsedType::Pointer(Box::new(ty)));
+		match self.peek()?.kind {
+			TokenKind::Operator(Operator::Multiply) => {
+				self.next()?; // *
+				// TODO: multiple layers of pointers
+				return Ok(ParsedType::Pointer(Box::new(ty)));
+			}
+			TokenKind::LeftBracket => {
+				let mut size = 0;
+				self.next()?; // [
+				if let TokenKind::Number(num) = self.peek()?.kind {
+					self.next()?;
+					size = num as usize;
+				}
+				self.next()?; // ]
+				return Ok(ParsedType::Array(Box::new(ty), size));
+			}
+			_ => {}
 		}
 		Ok(ty)
 	}
@@ -450,7 +466,7 @@ impl Parser {
 				if matches!(self.peek()?.kind, TokenKind::Keyword(Keyword::Else)) {
 					self.next()?; // Else
 					match self.peek()?.kind {
-						TokenKind::LeftBracket | TokenKind::Keyword(Keyword::If) => {
+						TokenKind::LeftBrace | TokenKind::Keyword(Keyword::If) => {
 							stmt.else_branch = Some(Box::new(self.parse_statement()?));
 						}
 						_ => {
@@ -460,7 +476,7 @@ impl Parser {
 				}
 				Ok(stmt)
 			}
-			TokenKind::LeftBracket => Ok(Statement::new(
+			TokenKind::LeftBrace => Ok(Statement::new(
 				StatementKind::Block(Rc::new(self.parse_scope(None)?)),
 				vec![],
 			)),
@@ -529,6 +545,20 @@ impl Parser {
 				ExpressionKind::StringLiteral(content),
 				vec![],
 			)),
+			TokenKind::LeftBracket => {
+				let mut arr = Vec::new();
+				while self.peek()?.kind != TokenKind::RightBracket {
+					let exp = self.parse_expression()?;
+					if self.peek()?.kind == TokenKind::Comma {
+						self.next()?;
+					} else {
+						expect_token!(self.peek()?, TokenKind::RightBracket)?;
+					}
+					arr.push(exp);
+				}
+				self.next()?;
+				Ok(Expression::new(ExpressionKind::ArrayLiteral, arr))
+			}
 			kind => {
 				todo!("expression {:?}", kind);
 			}
