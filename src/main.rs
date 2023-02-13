@@ -1,6 +1,7 @@
 use path_slash::PathBufExt;
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
+use tack::compatibility::check_compatibility;
 use tack::run::{invoke_command, run};
 
 fn print_help_and_exit() -> ! {
@@ -20,15 +21,8 @@ Options:
 	std::process::exit(1);
 }
 
-fn check_compatibility() {
-	if cfg!(windows) && Command::new("bash").arg("--version").output().is_err() {
-		println!("Error: WSL installation not found. Please install WSL and try again.");
-		std::process::exit(1)
-	}
-}
-
 fn main() {
-	check_compatibility();
+	check_compatibility("ld".to_string());
 
 	let input = match std::env::args().nth(1) {
 		Some(value) => {
