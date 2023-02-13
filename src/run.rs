@@ -34,7 +34,7 @@ pub fn run<S: AsRef<std::path::Path>>(
 	let mut parser = Parser::new(tokens.into_iter().peekable());
 	parser.parse().unwrap();
 
-	// println!("{:#?}", parser.functions);
+	//println!("{:#?}", parser.functions);
 
 	let mut checker = TypeChecker::new(&parser);
 	checker.check().unwrap();

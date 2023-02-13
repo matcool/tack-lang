@@ -248,33 +248,33 @@ pub enum ParserError {
 }
 
 macro_rules! error_at_token {
-	($token:expr, $expected:expr) => {{
-		let token = $token;
-		let expected = $expected;
-		eprintln!("Parser error {}:{}", file!(), line!());
-		eprintln!(
-			"Unexpected token at file.tack:{}:{}. Expected {expected} but got {:?}",
-			token.span.line, token.span.column, token.kind
-		);
-		std::process::exit(1);
-	}};
+    ($token:expr, $expected:expr) => {{
+        let token = $token;
+        let expected = $expected;
+        eprintln!("Parser error {}:{}", file!(), line!());
+        eprintln!(
+            "Unexpected token at file.tack:{}:{}. Expected {expected} but got {:?}",
+            token.span.line, token.span.column, token.kind
+        );
+        std::process::exit(1);
+    }};
 }
 
 macro_rules! expect_token {
-	($token:expr, $pattern:pat, $value:ident) => {{
-		let token = $token;
-		match token.kind {
-			$pattern => Ok($value),
-			_ => error_at_token!(token, stringify!($pattern)),
-		}
-	}};
-	($token:expr, $pattern:pat) => {{
-		let token = $token;
-		match token.kind {
-			$pattern => Ok(token),
-			_ => error_at_token!(token, stringify!($pattern)),
-		}
-	}};
+    ($token:expr, $pattern:pat, $value:ident) => {{
+        let token = $token;
+        match token.kind {
+            $pattern => Ok($value),
+            _ => error_at_token!(token, stringify!($pattern)),
+        }
+    }};
+    ($token:expr, $pattern:pat) => {{
+        let token = $token;
+        match token.kind {
+            $pattern => Ok(token),
+            _ => error_at_token!(token, stringify!($pattern)),
+        }
+    }};
 }
 
 impl Parser {
@@ -417,7 +417,7 @@ impl Parser {
 		let ty = ParsedType::Name(name);
 		if self.peek()?.kind == TokenKind::Operator(Operator::Multiply) {
 			self.next()?; // *
-			  // TODO: multiple layers of pointers
+			// TODO: multiple layers of pointers
 			return Ok(ParsedType::Pointer(Box::new(ty)));
 		}
 		Ok(ty)
@@ -471,6 +471,18 @@ impl Parser {
 		}
 	}
 
+	fn parse_subscript(&mut self, name: String) -> Result<Expression, ParserError> {
+		let subscript = Expression::new(
+			ExpressionKind::Operator(Operator::Add),
+			vec![
+				Expression::new(ExpressionKind::Variable(name), vec![]),
+				self.parse_expression()?,
+			],
+		);
+		expect_token!(self.next()?, TokenKind::RightBrace)?;
+		Ok(subscript)
+	}
+
 	fn parse_expression_primary(&mut self) -> Result<Expression, ParserError> {
 		let token = self.next()?;
 		match token.kind {
@@ -497,6 +509,12 @@ impl Parser {
 						})?;
 						Ok(exp)
 					}
+				} else if let TokenKind::LeftBrace = self.peek()?.kind {
+					self.next()?; // LeftBrace
+					Ok(Expression::new(
+						ExpressionKind::Operator(Operator::Dereference),
+						vec![self.parse_subscript(name)?],
+					))
 				} else {
 					Ok(Expression::new(ExpressionKind::Variable(name), vec![]))
 				}

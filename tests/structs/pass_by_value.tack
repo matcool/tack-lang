@@ -1,0 +1,17 @@
+// returns -11
+
+struct VecFP {
+	x: i32;
+	y: i32;
+}
+
+fn dp(i: VecFP, j: VecFP): i32 {
+    return (i.x * j.x) + (i.y * j.y);
+}
+
+
+fn main(): i32 {
+    let i: VecFP = { 3, -2 };
+    let j: VecFP = { 1, 7 };
+    return dp(i, j);
+}

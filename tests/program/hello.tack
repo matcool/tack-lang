@@ -5,6 +5,7 @@ fn print(msg: str) {
 }
 
 fn main(): i32 {
+    let s: str = "Hello world!\n";
 	print("Hello world!\n");
 	return 0;
 }

@@ -1,5 +1,5 @@
 // returns 22
 
-fn main(): i32 {
-	return 13 + 9;
+fn main() {
+    return 13 + 9;
 }
