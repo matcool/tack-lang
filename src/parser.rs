@@ -129,6 +129,7 @@ pub enum ExpressionKind {
 	AsmLiteral(String),
 	StringLiteral(String),
 	ArrayLiteral,
+	ArrayIndex,
 }
 
 #[derive(Debug)]
@@ -176,7 +177,10 @@ impl Statement {
 	}
 
 	fn requires_semicolon(&self) -> bool {
-		!matches!(&self.kind, StatementKind::If(_) | StatementKind::While(_) | StatementKind::Block(_))
+		!matches!(
+			&self.kind,
+			StatementKind::If(_) | StatementKind::While(_) | StatementKind::Block(_)
+		)
 	}
 }
 
@@ -421,7 +425,7 @@ impl Parser {
 		match self.peek()?.kind {
 			TokenKind::Operator(Operator::Multiply) => {
 				self.next()?; // *
-				// TODO: multiple layers of pointers
+			  // TODO: multiple layers of pointers
 				return Ok(ParsedType::Pointer(Box::new(ty)));
 			}
 			TokenKind::LeftBracket => {
@@ -499,22 +503,35 @@ impl Parser {
 				vec![],
 			)),
 			TokenKind::Identifier(name) => {
-				if let TokenKind::LeftParen = self.peek()?.kind {
-					self.next()?; // LeftParen
-					if name == "asm" {
-						let asm = expect_token!(self.next()?, TokenKind::StringLiteral(x), x)?;
-						expect_token!(self.next()?, TokenKind::RightParen)?;
-						Ok(Expression::new(ExpressionKind::AsmLiteral(asm), vec![]))
-					} else {
-						let mut exp = Expression::new(ExpressionKind::Call(name), vec![]);
-						self.parse_comma_list(|selfish: &mut Self| {
-							exp.children.push(selfish.parse_expression()?);
-							Ok(())
-						})?;
-						Ok(exp)
+				match self.peek()?.kind {
+					TokenKind::LeftParen => {
+						self.next()?; // LeftParen
+						if name == "asm" {
+							let asm = expect_token!(self.next()?, TokenKind::StringLiteral(x), x)?;
+							expect_token!(self.next()?, TokenKind::RightParen)?;
+							Ok(Expression::new(ExpressionKind::AsmLiteral(asm), vec![]))
+						} else {
+							let mut exp = Expression::new(ExpressionKind::Call(name), vec![]);
+							self.parse_comma_list(|selfish: &mut Self| {
+								exp.children.push(selfish.parse_expression()?);
+								Ok(())
+							})?;
+							Ok(exp)
+						}
 					}
-				} else {
-					Ok(Expression::new(ExpressionKind::Variable(name), vec![]))
+					TokenKind::LeftBracket => {
+						self.next()?; // LeftBracket
+						let index_exp = self.parse_expression()?;
+						expect_token!(self.next()?, TokenKind::RightBracket)?;
+						Ok(Expression::new(
+							ExpressionKind::ArrayIndex,
+							vec![
+								Expression::new(ExpressionKind::Variable(name), vec![]),
+								index_exp,
+							],
+						))
+					}
+					_ => Ok(Expression::new(ExpressionKind::Variable(name), vec![])),
 				}
 			}
 			TokenKind::Keyword(Keyword::Let) => {

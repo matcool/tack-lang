@@ -97,11 +97,23 @@ impl AST {
 	}
 
 	pub fn is_struct_or_array(&self, type_ref: TypeRef) -> bool {
-		matches!(self.get_type(type_ref).as_ref(), Type::Struct(_) | Type::Array(..))
+		matches!(
+			self.get_type(type_ref).as_ref(),
+			Type::Struct(_) | Type::Array(..)
+		)
 	}
 
 	pub fn is_pointer(&self, type_ref: TypeRef) -> bool {
 		matches!(self.get_type(type_ref).as_ref(), Type::Pointer(_))
+	}
+
+	pub fn is_integer(&self, type_ref: TypeRef) -> bool {
+		matches!(
+			self.get_type(type_ref).as_ref(),
+			Type::BuiltIn(BuiltInType::I32)
+				| Type::BuiltIn(BuiltInType::U8)
+				| Type::BuiltIn(BuiltInType::UPtr)
+		)
 	}
 }
 
@@ -606,7 +618,10 @@ impl TypeChecker<'_> {
 				}
 
 				// to fix rhs on struct assignment being reference, when it should be kept for compiler
-				if op != &Operator::Assign || !self.ast.is_struct_or_array(expression.children[1].value_type)
+				if op != &Operator::Assign
+					|| !self
+						.ast
+						.is_struct_or_array(expression.children[1].value_type)
 				{
 					expression.children[1].cast_if_reference();
 				}
@@ -756,7 +771,11 @@ impl TypeChecker<'_> {
 						if guessed_type.is_unknown() {
 							guessed_type = ty;
 						} else if ty != guessed_type {
-							return Err(TypeCheckerError::TypeMismatch(format!("expected {}, got {}", self.format_type(guessed_type), self.format_type(ty))));
+							return Err(TypeCheckerError::TypeMismatch(format!(
+								"expected {}, got {}",
+								self.format_type(guessed_type),
+								self.format_type(ty)
+							)));
 						}
 					}
 				}
@@ -770,7 +789,44 @@ impl TypeChecker<'_> {
 				}
 				// copy StringLiteral behavior, workaround while the compiler is really dumb
 				// and cant cast struct& to struct
-				Ok(self.ast.find_type_or_add(Type::Array(guessed_type, expression.children.len())).add_reference())
+				Ok(self
+					.ast
+					.find_type_or_add(Type::Array(guessed_type, expression.children.len()))
+					.add_reference())
+			}
+			ExpressionKind::ArrayIndex => {
+				let array_like = self.check_expression(
+					&mut expression.children[0],
+					function,
+					Rc::clone(&scope),
+				)?;
+				if self.ast.is_pointer(array_like) {
+					expression.children[0].cast_if_reference();
+				}
+
+				self.check_expression(&mut expression.children[1], function, scope)?;
+				expression.children[1].cast_if_reference();
+				let index_type =
+					self.promote_int_literal_into(&mut expression.children[1], BUILTIN_TYPE_I32);
+
+				// FIXME: i really need better errors
+
+				if !self.ast.is_integer(index_type) {
+					return Err(TypeCheckerError::TypeMismatch(
+						"expected integer or smth".into(),
+					));
+				}
+
+				let ty = self.ast.get_type(array_like);
+				if let Type::Pointer(inner) = ty.as_ref() {
+					Ok(inner.add_reference())
+				} else if let Type::Array(inner, _) = ty.as_ref() {
+					Ok(inner.add_reference())
+				} else {
+					Err(TypeCheckerError::TypeMismatch(
+						"expected array or pointer".into(),
+					))
+				}
 			}
 			k => {
 				todo!("{:?}", k)

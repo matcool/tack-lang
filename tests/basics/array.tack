@@ -2,7 +2,5 @@
 
 fn main(): i32 {
 	let arr: i32[4] = [1 as i32, 2, 3, 4,];
-	let ptr: i32* = &arr as i32*;
-	return *(ptr + 1);
-	// return arr[2];
+	return arr[2];
 }

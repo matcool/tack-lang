@@ -10,7 +10,8 @@ use crate::{
 	checker::AST,
 	lexer::Operator,
 	parser::{
-		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind, Type, TypeRef,
+		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind, Type,
+		TypeRef,
 	},
 };
 
@@ -42,7 +43,7 @@ impl Type {
 				.iter()
 				.map(|field| ast.get_type_size(field.ty))
 				.sum(),
-			Type::Array(inner, size) => ast.get_type_size(*inner) * size
+			Type::Array(inner, size) => ast.get_type_size(*inner) * size,
 		}
 	}
 	pub fn aligned_size(&self, ast: &AST) -> usize {
@@ -544,10 +545,23 @@ impl Compiler {
 				let size = self.ast.get_type_size(exp.children[0].value_type);
 				for (i, child) in exp.children.iter().enumerate() {
 					self.compile_expression(child, function);
-					self.write(format!("mov [ebp - {}], eax", stack_offset - (i * size) as i32));
+					self.write(format!(
+						"mov [ebp - {}], eax",
+						stack_offset - (i * size) as i32
+					));
 				}
 
 				self.write(format!("lea eax, [ebp - {}]", stack_offset));
+			}
+			ExpressionKind::ArrayIndex => {
+				self.compile_expression(&exp.children[0], function);
+				self.write("push eax");
+				self.compile_expression(&exp.children[1], function);
+				self.write(format!(
+					"imul eax, {}",
+					self.ast.get_type_size(exp.value_type)
+				));
+				self.write("lea eax, [ecx + eax]");
 			}
 			ref k => {
 				todo!("expression {:?}", k);
