@@ -7,19 +7,10 @@ use crate::lexer::*;
 use crate::parser::Parser;
 
 pub fn invoke_command(args: String) -> Output {
-	return if cfg!(target_os = "windows") {
-		Command::new("bash")
-			.arg("-c")
-			.arg(args)
-			.output()
-			.unwrap()
-	}
-	else {
-		Command::new("sh")
-			.arg("-c")
-			.arg(args)
-			.output()
-			.unwrap()
+	return if cfg!(windows) {
+		Command::new("bash").arg("-c").arg(args).output().unwrap()
+	} else {
+		Command::new("sh").arg("-c").arg(args).output().unwrap()
 	};
 }
 
@@ -62,7 +53,7 @@ pub fn run<S: AsRef<std::path::Path>>(
 	if let Some(output) = output_path {
 		std::fs::write(&output, include_str!("nasm.asm").to_string() + &asm_output).unwrap();
 		if build {
-			/* invoke nasm and linker */
+			// invoke nasm and linker
 			invoke_command(format!("nasm -f elf \"{0}\" -F dwarf -o \"{0}.o\"", output));
 			invoke_command(format!("ld -m elf_i386 \"{0}.o\" -o \"{0}\"", output));
 		}

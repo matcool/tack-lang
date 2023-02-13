@@ -1,11 +1,12 @@
 use path_slash::PathBufExt;
 use std::{path::PathBuf, process::Command};
 
-use tack::run::{run, invoke_command};
+use tack::run::{invoke_command, run};
 
 fn print_help_and_exit() -> ! {
 	println!(
-"
+		"tack compiler. very silly language
+
 Usage: tack <input> [options...] [output]
        tack --help (or -h)
 
@@ -20,25 +21,25 @@ Options:
 }
 
 fn check_compatibility() {
-	if cfg!(target_os = "windows") {
-		match Command::new("bash").arg("--version").output() {
-			Err(_) => {
-				println!("Error: WSL installation not found. Please install WSL and try again.");
-				std::process::exit(1)
-			},
-			_ => {},
-		};
+	if cfg!(windows) {
+		if Command::new("bash").arg("--version").output().is_err() {
+			println!("Error: WSL installation not found. Please install WSL and try again.");
+			std::process::exit(1)
+		}
 	}
 }
 
 fn main() {
 	check_compatibility();
-	println!("Compatible...");
 
 	let input = match std::env::args().nth(1) {
-		Some(value) =>
-			if value == "-h" || value == "--help" { print_help_and_exit() }
-			else { value },
+		Some(value) => {
+			if value == "-h" || value == "--help" {
+				print_help_and_exit()
+			} else {
+				value
+			}
+		}
 		_ => print_help_and_exit(),
 	};
 
@@ -63,10 +64,13 @@ fn main() {
 	run(input, output.clone(), Some("graph.gv".into()), build);
 
 	if output.is_some() && build && execute {
-		let filename = PathBuf::from(output.unwrap()).to_slash().unwrap().to_string();
+		let filename = PathBuf::from(output.unwrap())
+			.to_slash()
+			.unwrap()
+			.to_string();
 		let out = invoke_command(format!("./{}", filename));
 		println!(
-			"\"{filename}\" returned code {}, output: {}",
+			"\"{filename}\" returned code {}, output:\n{}",
 			out.status.code().unwrap(),
 			String::from_utf8(out.stdout).unwrap()
 		);
