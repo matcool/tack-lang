@@ -8,13 +8,14 @@ use crate::parser::Parser;
 
 pub fn invoke_command(args: String) -> Output {
 	return if cfg!(target_os = "windows") {
-		Command::new("cmd")
+		Command::new("bash")
+			.arg("-c")
 			.arg(args)
 			.output()
 			.unwrap()
 	}
 	else {
-		Command::new("bash")
+		Command::new("sh")
 			.arg("-c")
 			.arg(args)
 			.output()
@@ -31,7 +32,7 @@ pub fn run<S: AsRef<std::path::Path>>(
 	let contents = match std::fs::read_to_string(input) {
 		Ok(value) => value,
 		Err(value) => {
-			println!("Input error: {value}");
+			println!("Error: {value}");
 			std::process::exit(1)
 		}
 	};
@@ -61,9 +62,8 @@ pub fn run<S: AsRef<std::path::Path>>(
 	if let Some(output) = output_path {
 		std::fs::write(&output, include_str!("nasm.asm").to_string() + &asm_output).unwrap();
 		if build {
-			// invoke nasm and output file
+			/* invoke nasm and linker */
 			invoke_command(format!("nasm -f elf \"{0}\" -F dwarf -o \"{0}.o\"", output));
-			// invoke ld with object file
 			invoke_command(format!("ld -m elf_i386 \"{0}.o\" -o \"{0}\"", output));
 		}
 	} else {
