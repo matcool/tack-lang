@@ -30,22 +30,12 @@ fn check_compatibility() {
 fn main() {
 	check_compatibility();
 
-	let input = match std::env::args().nth(1) {
-		Some(value) => {
-			if value == "-h" || value == "--help" {
-				print_help_and_exit()
-			} else {
-				value
-			}
-		}
-		_ => print_help_and_exit(),
-	};
-
+	let mut input = None;
 	let mut output = None;
 	let mut build = false;
 	let mut execute = false;
 
-	let mut iter = std::env::args().skip(2);
+	let mut iter = std::env::args().skip(1);
 	while let Some(arg) = iter.next() {
 		if arg == "-o" || arg == "--output" {
 			output = iter.next();
@@ -53,11 +43,20 @@ fn main() {
 			build = true;
 		} else if arg == "-r" || arg == "--run" {
 			execute = true;
+		} else if arg == "-h" || arg == "--help" {
+			print_help_and_exit();
+		} else if input.is_none() {
+			input = Some(arg);
 		} else {
 			println!("Unknown option \"{arg}\"");
 			print_help_and_exit();
 		}
 	}
+
+	let Some(input) = input else {
+		eprintln!("Missing input file");
+		print_help_and_exit();
+	};
 
 	run(input, output.clone(), Some("graph.gv".into()), build);
 

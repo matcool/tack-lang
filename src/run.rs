@@ -34,13 +34,9 @@ pub fn run<S: AsRef<std::path::Path>>(
 	let mut parser = Parser::new(tokens.into_iter().peekable());
 	parser.parse().unwrap();
 
-	// println!("{:#?}", parser.functions);
-
 	let mut checker = TypeChecker::new(&parser);
 	checker.check().unwrap();
 	let ast = checker.ast;
-
-	// println!("{:#?}", ast.functions);
 
 	if let Some(path) = graph_file {
 		std::fs::write(path, GraphGen::generate_graph(&ast).unwrap()).unwrap();
@@ -56,6 +52,9 @@ pub fn run<S: AsRef<std::path::Path>>(
 			// invoke nasm and linker
 			invoke_command(format!("nasm -f elf \"{0}\" -F dwarf -o \"{0}.o\"", output));
 			invoke_command(format!("ld -m elf_i386 \"{0}.o\" -o \"{0}\"", output));
+			if std::fs::remove_file(format!("{output}.o")).is_err() {
+				eprintln!("Warning: failed to delete object file");
+			}
 		}
 	} else {
 		print!("Compiler output:\n{}", asm_output);
