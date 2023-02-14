@@ -561,7 +561,8 @@ impl Compiler {
 					"imul eax, {}",
 					self.ast.get_type_size(exp.value_type)
 				));
-				self.write("lea eax, [ecx + eax]");
+				self.write("pop ecx");
+				self.write("add eax, ecx");
 			}
 			ref k => {
 				todo!("expression {:?}", k);

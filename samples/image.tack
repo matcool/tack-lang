@@ -12,9 +12,9 @@ fn alloc(size: i32): u8* {
 }
 
 fn print_num(num: i32) {
-	let buffer: u8* = alloc(16);
+	let buffer: u8[16];
 
-	let start: uptr = buffer as uptr + 16;
+	let start: u8* = &buffer[16];
 	let size: i32 = 0;
 
 	// no do-while loops so..
@@ -23,7 +23,7 @@ fn print_num(num: i32) {
 	while num != 0 || first {
 		first = false;
 		start = start - 1;
-		*(start as u8*) = (0x30 + (num % 10)) as u8;
+		*start = (0x30 + (num % 10)) as u8;
 		num = num / 10;
 		size = size + 1;
 	}
@@ -47,10 +47,10 @@ fn open_file(name: str): File {
 	let c_str: u8* = alloc(name.size + 1);
 	let i: i32 = 0;
 	while i < name.size {
-		*(c_str + i) = *(name.data + i);
+		c_str[i] = *(name.data + i);
 		i = i + 1;
 	}
-	*(c_str + i) = 0;
+	c_str[i] = 0;
 
 	// open(c_str, O_CREAT, S_IRWXU)
 	let fd: i32 = syscall(5, c_str, 66, 448);
@@ -71,7 +71,7 @@ fn file_write_raw(fd: i32, data: u8*, size: i32) {
 fn memcpy(dst: u8*, src: u8*, size: i32) {
 	let i: i32 = 0;
 	while i < size {
-		*(dst + i) = *(src + i);
+		dst[i] = src[i];
 		i = i + 1;
 	}
 }
