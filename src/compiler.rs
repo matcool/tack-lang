@@ -97,7 +97,12 @@ impl Compiler {
 
 	pub fn compile(&self) -> String {
 		for function in &self.ast.functions {
-			self.compile_function(function);
+			let function = &function.borrow();
+			if function.is_extern {
+				self.write(format!("extern {}", function.name));
+			} else {
+				self.compile_function(function);
+			}
 		}
 		for (i, str) in self.string_literals.borrow().iter().enumerate() {
 			self.write(format!(
@@ -484,8 +489,9 @@ impl Compiler {
 					.ast
 					.functions
 					.iter()
-					.find(|f| &f.name == name)
-					.expect("where the function");
+					.find(|f| &f.borrow().name == name)
+					.expect("where the function")
+					.borrow();
 
 				let mut struct_offset = 0;
 				if func.is_struct_return {

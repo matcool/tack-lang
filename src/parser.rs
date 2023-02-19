@@ -1,7 +1,7 @@
 use crate::lexer::{Keyword, Operator, Span, Token, TokenKind};
 use std::{cell::RefCell, rc::Rc};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum BuiltInType {
 	I32,
 	U8,
@@ -11,7 +11,7 @@ pub enum BuiltInType {
 	IntLiteral,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StructType {
 	pub name: String,
 	pub fields: Vec<Variable>,
@@ -24,7 +24,7 @@ impl PartialEq for StructType {
 	}
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Type {
 	BuiltIn(BuiltInType),
 	Pointer(TypeRef),
@@ -222,6 +222,7 @@ pub struct Function {
 	pub scope: Rc<Scope>,
 	pub is_struct_return: bool,
 	pub scope_size: RefCell<usize>,
+	pub is_extern: bool,
 }
 
 impl Function {
@@ -235,6 +236,7 @@ impl Function {
 			scope: Rc::new(Scope::new(None)),
 			is_struct_return: false,
 			scope_size: 0.into(),
+			is_extern: false,
 		}
 	}
 }
@@ -243,6 +245,7 @@ pub struct Parser {
 	tokens: std::iter::Peekable<std::vec::IntoIter<Token>>,
 	pub functions: Vec<RefCell<Function>>,
 	pub parsed_structs: Vec<ParsedStruct>,
+	pub imported_files: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -287,6 +290,7 @@ impl Parser {
 			tokens,
 			functions: vec![],
 			parsed_structs: vec![],
+			imported_files: vec![],
 		}
 	}
 
@@ -354,6 +358,10 @@ impl Parser {
 					self.next()?; // RightBracket
 
 					self.parsed_structs.push(parsed_struct);
+				}
+				TokenKind::Keyword(Keyword::Import) => {
+					let file_path = expect_token!(self.next()?, TokenKind::StringLiteral(x), x)?;
+					self.imported_files.push(file_path);
 				}
 				_ => {
 					error_at_token!(token, "unexpected token outside function, great error btw");

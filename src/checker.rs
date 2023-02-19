@@ -1,9 +1,9 @@
-use std::{borrow::BorrowMut, cell::RefCell, rc::Rc};
+use std::{borrow::BorrowMut, cell::RefCell, path::PathBuf, rc::Rc};
 
 use itertools::Itertools;
 
 use crate::{
-	lexer::Operator,
+	lexer::{Lexer, Operator},
 	parser::{
 		BuiltInType, Expression, ExpressionKind, Function, ParsedType, ParsedVariable, Parser,
 		Scope, Statement, StatementKind, StructType, Type, TypeRef, Variable,
@@ -52,11 +52,19 @@ impl Type {
 
 #[derive(Default)]
 pub struct AST {
-	pub functions: Vec<Function>,
+	pub functions: Vec<RefCell<Function>>,
 	pub types: Vec<Rc<Type>>,
+	pub file_path: PathBuf,
 }
 
 impl AST {
+	fn new(file_path: PathBuf) -> Self {
+		Self {
+			file_path,
+			..Default::default()
+		}
+	}
+
 	fn find_type<P: FnMut(&&Rc<Type>) -> bool>(&self, predicate: P) -> Option<TypeRef> {
 		self.types
 			.iter()
@@ -164,17 +172,19 @@ const BUILTIN_TYPE_STR: TypeRef = TypeRef::new(7); // 6 is u8*
 pub struct TypeChecker<'a> {
 	parser: &'a Parser,
 	pub ast: AST,
+	pub file_path: PathBuf,
 }
 
 impl TypeChecker<'_> {
-	pub fn new(parser: &'_ Parser) -> TypeChecker {
+	pub fn new(parser: &'_ Parser, file_path: PathBuf) -> TypeChecker {
 		TypeChecker {
 			parser,
-			ast: AST::default(),
+			ast: AST::new(file_path.clone()),
+			file_path,
 		}
 	}
 
-	pub fn check(&mut self) -> Result<(), TypeCheckerError> {
+	pub fn check(&mut self) -> Result<Vec<AST>, TypeCheckerError> {
 		self.ast.add_type(Type::BuiltIn(BuiltInType::I32));
 		self.ast.add_type(Type::BuiltIn(BuiltInType::U8));
 		self.ast.add_type(Type::BuiltIn(BuiltInType::Bool));
@@ -197,6 +207,56 @@ impl TypeChecker<'_> {
 			],
 		}));
 
+		let mut asts = Vec::new();
+
+		for imported_file in &self.parser.imported_files {
+			let imported_path = self
+				.file_path
+				.parent()
+				.unwrap_or_else(|| panic!("invalid path?"))
+				.join(imported_file);
+
+			let Ok(contents) = std::fs::read_to_string(imported_path.clone()) else {
+				panic!("couldnt read imported file {imported_file}");
+			};
+
+			let mut lexer = Lexer::new(contents.chars().peekable());
+			let tokens: Vec<_> = lexer.iter().collect();
+
+			let mut parser = Parser::new(tokens.into_iter().peekable());
+			if parser.parse().is_err() {
+				panic!("failed to parse {imported_file}");
+			}
+
+			let mut checker = TypeChecker::new(&parser, imported_path);
+			asts.extend(checker.check()?);
+
+			let clone_type = |new_ast: &mut AST, old_ast: &AST, type_ref: TypeRef| {
+				new_ast.find_type_or_add(old_ast.get_type(type_ref).as_ref().clone())
+			};
+
+			for function in &checker.ast.functions {
+				let mut imported_func = function.borrow().clone();
+				imported_func.is_extern = true;
+				for arg in &mut imported_func.arguments {
+					arg.ty = clone_type(&mut self.ast, &checker.ast, arg.ty);
+				}
+				imported_func.return_type =
+					clone_type(&mut self.ast, &checker.ast, imported_func.return_type);
+				self.ast.functions.push(imported_func.into());
+			}
+
+			// adds structs that arent mentioned in functions
+			for ty in &checker.ast.types {
+				if self.ast.find_type(|t| t == &ty).is_none() {
+					self.ast.add_type(ty.as_ref().clone());
+				}
+			}
+
+			// store child ast
+			asts.push(checker.ast);
+		}
+
 		for parsed_struct in &self.parser.parsed_structs {
 			let mut fields: Vec<Variable> = vec![];
 			for field in &parsed_struct.fields {
@@ -214,7 +274,8 @@ impl TypeChecker<'_> {
 		for function in &self.parser.functions {
 			self.check_function(function)?;
 		}
-		Ok(())
+
+		Ok(asts)
 	}
 
 	fn check_parsed_var(
@@ -241,9 +302,9 @@ impl TypeChecker<'_> {
 			function.arguments = args;
 		}
 		let function = function.borrow();
-		self.check_scope(Rc::clone(&function.scope), &function)?;
 		// mm yummy clone!
-		self.ast.functions.push(function.clone());
+		self.ast.functions.push(function.clone().into());
+		self.check_scope(Rc::clone(&function.scope), &function)?;
 		Ok(())
 	}
 
@@ -661,12 +722,12 @@ impl TypeChecker<'_> {
 			}
 			ExpressionKind::Call(name) => {
 				if let Some(func) = self
-					.parser
+					.ast
 					.functions
 					.iter()
 					.find(|&f| &f.borrow().name == name)
+					.map(|f| f.borrow().clone())
 				{
-					let func = func.borrow();
 					if func.arguments.len() != expression.children.len() {
 						return Err(TypeCheckerError::ArgumentCountMismatch);
 					}

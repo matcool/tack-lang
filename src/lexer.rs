@@ -11,6 +11,7 @@ pub enum Keyword {
 	True,
 	False,
 	Struct,
+	Import,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -268,6 +269,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 						"while" => TokenKind::Keyword(Keyword::While),
 						"struct" => TokenKind::Keyword(Keyword::Struct),
 						"as" => TokenKind::Operator(Operator::As),
+						"import" => TokenKind::Keyword(Keyword::Import),
 						_ => TokenKind::Identifier(identifer),
 					}
 				}

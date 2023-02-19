@@ -41,6 +41,7 @@ impl GraphGen {
 		writeln!(obj.out, "node [shape=record]")?;
 		writeln!(obj.out, "rankdir=LR")?;
 		for function in &ast.functions {
+			let function = &function.borrow();
 			let id = obj.next_id();
 			writeln!(
 				obj.out,
