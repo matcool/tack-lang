@@ -1,95 +1,39 @@
 use crate::lexer::{Keyword, Operator, Span, Token, TokenKind};
-use std::{cell::RefCell, rc::Rc};
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum BuiltInType {
-	I32,
-	U8,
-	UPtr,
-	Bool,
-	Void,
-	IntLiteral,
-}
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
-pub struct StructType {
-	pub name: String,
-	pub fields: Vec<Variable>,
-}
-
-impl PartialEq for StructType {
-	fn eq(&self, other: &Self) -> bool {
-		// is this a good idea?
-		self.name == other.name
-	}
-}
-
-#[derive(Debug, PartialEq, Clone)]
 pub enum Type {
-	BuiltIn(BuiltInType),
-	Pointer(TypeRef),
-	Struct(StructType),
-	Array(TypeRef, usize),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct TypeRef {
-	pub id: usize,
-	pub reference: bool,
-}
-
-impl TypeRef {
-	pub const fn new(id: usize) -> Self {
-		Self {
-			id,
-			reference: false,
-		}
-	}
-
-	pub fn unknown() -> Self {
-		Self::new(usize::MAX)
-	}
-
-	pub fn is_unknown(&self) -> bool {
-		self.id == usize::MAX
-	}
-}
-
-#[derive(Debug, Clone)]
-pub enum ParsedType {
 	Name(String),
-	Pointer(Box<ParsedType>),
-	Array(Box<ParsedType>, usize),
+	Pointer(Box<Type>),
+	Array(Box<Type>, usize),
 	Unknown, // used as a default value, shouldnt be used anywhere
 }
 
 #[derive(Debug, Clone)]
 pub struct ParsedStruct {
 	pub name: String,
-	pub fields: Vec<ParsedVariable>,
+	pub fields: Vec<Variable>,
 }
 
 impl Operator {
-	const MAX_PRECEDENCE: i32 = 11;
-	fn precedence(&self) -> i32 {
-		match self {
-			Operator::Assign => 0,
-			Operator::Or => 1,
-			Operator::And => 2,
-			Operator::BitOr => 3,
-			Operator::BitAnd => 4,
-			Operator::Equals | Operator::NotEquals => 5,
+	const MAX_PRECEDENCE: i32 = 10;
+	fn precedence(&self) -> Option<i32> {
+		Some(match self {
+			Operator::Assign => 1,
+			Operator::Or => 2,
+			Operator::And => 3,
+			Operator::BitOr => 4,
+			Operator::BitAnd => 5,
+			Operator::Equals | Operator::NotEquals => 6,
 			Operator::GreaterThan
 			| Operator::LessThan
 			| Operator::GreaterThanEq
-			| Operator::LessThanEq => 6,
-			Operator::BitShiftLeft | Operator::BitShiftRight => 7,
-			Operator::Add | Operator::Sub => 8,
-			Operator::Multiply | Operator::Divide | Operator::Mod => 9,
-			Operator::As => 10,
-			Operator::Dot => 11,
-			_ => 9999,
-		}
+			| Operator::LessThanEq => 7,
+			Operator::BitShiftLeft | Operator::BitShiftRight => 8,
+			Operator::Add | Operator::Sub => 9,
+			Operator::Multiply | Operator::Divide | Operator::Mod => 10,
+			_ => None?,
+		})
 	}
 	pub fn is_binary(&self) -> bool {
 		!matches!(
@@ -97,43 +41,37 @@ impl Operator {
 			Operator::Not | Operator::Negate | Operator::Dereference | Operator::Reference
 		)
 	}
+	fn is_right_associative(&self) -> bool {
+		matches!(self, Operator::Assign)
+	}
 }
 
+/// Represents a variable declaration, e.g. `x: i32`
 #[derive(Debug, Clone)]
 pub struct Variable {
 	pub name: String,
-	pub ty: TypeRef,
-}
-
-#[derive(Debug, Clone)]
-pub struct ParsedVariable {
-	pub name: String,
-	pub ty: ParsedType,
+	pub ty: Type,
 }
 
 #[derive(Debug)]
 pub enum ExpressionKind {
 	NumberLiteral(i64),
 	BoolLiteral(bool),
-	ParsedDeclaration(ParsedVariable),
 	Declaration(Variable),
-	Variable(String),
+	Identifier(String),
 	Operator(Operator),
 	Call(String),
-	Cast,
-	StructAccess(TypeRef, String),
-	ParsedCast(ParsedType),
-	AsmLiteral(String),
+	Cast(Type),
 	StringLiteral(String),
 	ArrayLiteral,
 	ArrayIndex,
+	StructAccess(String),
 }
 
 #[derive(Debug)]
 pub struct Expression {
 	pub kind: ExpressionKind,
 	pub children: Vec<Expression>,
-	pub value_type: TypeRef,
 	pub span: Span,
 }
 
@@ -142,7 +80,6 @@ impl Expression {
 		Expression {
 			kind,
 			children,
-			value_type: TypeRef::unknown(),
 			span: Default::default(),
 		}
 	}
@@ -152,7 +89,7 @@ impl Expression {
 pub enum StatementKind {
 	Expression,
 	Return,
-	If(Rc<Scope>),
+	If(Rc<Scope>, Option<Box<Statement>>),
 	While(Rc<Scope>),
 	Block(Rc<Scope>),
 }
@@ -161,31 +98,25 @@ pub enum StatementKind {
 pub struct Statement {
 	pub kind: StatementKind,
 	pub children: Vec<Expression>,
-	pub else_branch: Option<Box<Statement>>,
 }
 
 impl Statement {
 	fn new(kind: StatementKind, children: Vec<Expression>) -> Statement {
-		Statement {
-			kind,
-			children,
-			else_branch: None,
-		}
+		Statement { kind, children }
 	}
 
 	fn requires_semicolon(&self) -> bool {
 		!matches!(
 			&self.kind,
-			StatementKind::If(_) | StatementKind::While(_) | StatementKind::Block(_)
+			StatementKind::If(_, _) | StatementKind::While(_) | StatementKind::Block(_)
 		)
 	}
 }
 
 pub struct Scope {
 	pub parent: Option<Rc<Scope>>,
-	pub statements: Vec<RefCell<Statement>>,
-	pub variables: RefCell<Vec<Variable>>,
-	pub children: RefCell<Vec<Rc<Scope>>>,
+	pub statements: Vec<Statement>,
+	pub children: Vec<Scope>,
 }
 
 impl std::fmt::Debug for Scope {
@@ -196,7 +127,6 @@ impl std::fmt::Debug for Scope {
 				self.parent.as_ref().map_or(&"None", |_| &"Some(...)"),
 			)
 			.field("statements", &self.statements)
-			.field("variables", &self.variables)
 			.finish()
 	}
 }
@@ -206,51 +136,40 @@ impl Scope {
 		Scope {
 			parent,
 			statements: vec![],
-			variables: vec![].into(),
-			children: vec![].into(),
+			children: vec![],
 		}
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Function {
 	pub name: String,
-	pub parsed_arguments: Vec<ParsedVariable>,
-	pub parsed_return_type: ParsedType,
 	pub arguments: Vec<Variable>,
-	pub return_type: TypeRef,
-	pub scope: Rc<Scope>,
-	pub is_struct_return: bool,
-	pub scope_size: RefCell<usize>,
-	pub is_extern: bool,
+	pub return_type: Type,
+	pub scope: Scope,
 }
 
 impl Function {
 	fn new(name: String) -> Function {
 		Function {
 			name,
-			parsed_arguments: vec![],
-			parsed_return_type: ParsedType::Unknown,
 			arguments: vec![],
-			return_type: TypeRef::unknown(),
-			scope: Rc::new(Scope::new(None)),
-			is_struct_return: false,
-			scope_size: 0.into(),
-			is_extern: false,
+			return_type: Type::Unknown,
+			scope: Scope::new(None),
 		}
 	}
 }
 
 pub struct Parser {
 	tokens: std::iter::Peekable<std::vec::IntoIter<Token>>,
-	pub functions: Vec<RefCell<Function>>,
+	pub functions: Vec<Function>,
 	pub parsed_structs: Vec<ParsedStruct>,
 	pub imported_files: Vec<String>,
 }
 
 #[derive(Debug)]
 pub enum ParserError {
-	InvalidToken(Token),
+	// InvalidToken(Token),
 	MissingToken, // for when the iterator reaches the end, def need a better name
 }
 
@@ -318,7 +237,7 @@ impl Parser {
 
 					expect_token!(self.next()?, TokenKind::LeftParen)?;
 					self.parse_comma_list(|selfish: &mut Self| {
-						function.parsed_arguments.push(selfish.parse_var_decl()?);
+						function.arguments.push(selfish.parse_var_decl()?);
 						Ok(())
 					})?;
 
@@ -326,19 +245,20 @@ impl Parser {
 					match next.kind {
 						TokenKind::TypeIndicator => {
 							self.next()?;
-							function.parsed_return_type = self.parse_type()?;
+							function.return_type = self.parse_type()?;
 						}
 						TokenKind::LeftBrace => {
-							function.parsed_return_type = ParsedType::Name("void".to_string());
+							function.return_type = Type::Name("void".to_string());
 						}
 						_ => {
 							error_at_token!(self.next()?, "function return type");
 						}
 					}
 
-					self.parse_block(&mut Rc::get_mut(&mut function.scope).unwrap().statements)?;
+					let statements = self.parse_block()?;
+					function.scope.statements = statements;
 
-					self.functions.push(function.into());
+					self.functions.push(function);
 				}
 				TokenKind::Keyword(Keyword::Struct) => {
 					let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
@@ -397,41 +317,42 @@ impl Parser {
 		Ok(())
 	}
 
-	fn parse_block(&mut self, statements: &mut Vec<RefCell<Statement>>) -> Result<(), ParserError> {
+	fn parse_block(&mut self) -> Result<Vec<Statement>, ParserError> {
+		let mut result = Vec::new();
 		expect_token!(self.next()?, TokenKind::LeftBrace)?;
 		while !matches!(self.peek()?.kind, TokenKind::RightBrace) {
 			let stmt = self.parse_statement()?;
 			let semi = stmt.requires_semicolon();
-			statements.push(stmt.into());
 			if semi {
 				expect_token!(self.next()?, TokenKind::Semicolon)?;
 			}
+			result.push(stmt);
 		}
 		self.next()?; // RightBracket
-		Ok(())
+		Ok(result)
 	}
 
 	fn parse_scope(&mut self, parent: Option<Rc<Scope>>) -> Result<Scope, ParserError> {
 		let mut scope = Scope::new(parent);
-		self.parse_block(&mut scope.statements)?;
+		scope.statements = self.parse_block()?;
 		Ok(scope)
 	}
 
-	fn parse_var_decl(&mut self) -> Result<ParsedVariable, ParserError> {
+	fn parse_var_decl(&mut self) -> Result<Variable, ParserError> {
 		let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
 		expect_token!(self.next()?, TokenKind::TypeIndicator)?;
 		let ty = self.parse_type()?;
-		Ok(ParsedVariable { name, ty })
+		Ok(Variable { name, ty })
 	}
 
-	fn parse_type(&mut self) -> Result<ParsedType, ParserError> {
+	fn parse_type(&mut self) -> Result<Type, ParserError> {
 		let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
-		let ty = ParsedType::Name(name);
+		let ty = Type::Name(name);
 		match self.peek()?.kind {
 			TokenKind::Operator(Operator::Multiply) => {
 				self.next()?; // *
-			  // TODO: multiple layers of pointers
-				return Ok(ParsedType::Pointer(Box::new(ty)));
+				  // TODO: multiple layers of pointers
+				return Ok(Type::Pointer(Box::new(ty)));
 			}
 			TokenKind::LeftBracket => {
 				let mut size = 0;
@@ -441,7 +362,7 @@ impl Parser {
 					size = num as usize;
 				}
 				self.next()?; // ]
-				return Ok(ParsedType::Array(Box::new(ty), size));
+				return Ok(Type::Array(Box::new(ty), size));
 			}
 			_ => {}
 		}
@@ -471,18 +392,22 @@ impl Parser {
 				self.next()?; // If
 				let condition = self.parse_expression()?;
 				let scope = self.parse_scope(None)?;
-				let mut stmt = Statement::new(StatementKind::If(Rc::new(scope)), vec![condition]);
+				let mut else_branch = None;
 				if matches!(self.peek()?.kind, TokenKind::Keyword(Keyword::Else)) {
 					self.next()?; // Else
 					match self.peek()?.kind {
 						TokenKind::LeftBrace | TokenKind::Keyword(Keyword::If) => {
-							stmt.else_branch = Some(Box::new(self.parse_statement()?));
+							else_branch = Some(Box::new(self.parse_statement()?));
 						}
 						_ => {
 							error_at_token!(self.next()?, "if statement or block");
 						}
 					}
 				}
+				let stmt = Statement::new(
+					StatementKind::If(Rc::new(scope), else_branch),
+					vec![condition],
+				);
 				Ok(stmt)
 			}
 			TokenKind::LeftBrace => Ok(Statement::new(
@@ -496,77 +421,96 @@ impl Parser {
 		}
 	}
 
-	fn parse_expression_primary(&mut self) -> Result<Expression, ParserError> {
-		let token = self.next()?;
+	fn get_expression_precedence(token: &Token) -> i32 {
 		match token.kind {
-			TokenKind::Number(number) => Ok(Expression::new(
-				ExpressionKind::NumberLiteral(number),
-				vec![],
-			)),
-			TokenKind::Keyword(value @ (Keyword::True | Keyword::False)) => Ok(Expression::new(
-				ExpressionKind::BoolLiteral(value == Keyword::True),
-				vec![],
-			)),
-			TokenKind::Identifier(name) => {
-				match self.peek()?.kind {
-					TokenKind::LeftParen => {
-						self.next()?; // LeftParen
-						if name == "asm" {
-							let asm = expect_token!(self.next()?, TokenKind::StringLiteral(x), x)?;
-							expect_token!(self.next()?, TokenKind::RightParen)?;
-							Ok(Expression::new(ExpressionKind::AsmLiteral(asm), vec![]))
-						} else {
-							let mut exp = Expression::new(ExpressionKind::Call(name), vec![]);
-							self.parse_comma_list(|selfish: &mut Self| {
-								exp.children.push(selfish.parse_expression()?);
-								Ok(())
-							})?;
-							Ok(exp)
-						}
-					}
-					TokenKind::LeftBracket => {
-						self.next()?; // LeftBracket
-						let index_exp = self.parse_expression()?;
-						expect_token!(self.next()?, TokenKind::RightBracket)?;
-						Ok(Expression::new(
-							ExpressionKind::ArrayIndex,
-							vec![
-								Expression::new(ExpressionKind::Variable(name), vec![]),
-								index_exp,
-							],
-						))
-					}
-					_ => Ok(Expression::new(ExpressionKind::Variable(name), vec![])),
+			TokenKind::Operator(op) if op.precedence().is_some() => op.precedence().unwrap(),
+			// Postfix
+			TokenKind::LeftParen
+			| TokenKind::LeftBracket
+			| TokenKind::Operator(Operator::As)
+			| TokenKind::Operator(Operator::Dot) => Operator::MAX_PRECEDENCE + 1,
+			_ => 0,
+		}
+	}
+
+	/// Parses either infix or postfix expressions.
+	/// Precedence is defined in `Parser::get_expression_precedence`.
+	fn parse_expression_infix(
+		&mut self,
+		token: Token,
+		left: Expression,
+	) -> Result<Expression, ParserError> {
+		Ok(match token.kind {
+			// All binary operators that define a precedence
+			TokenKind::Operator(op) if op.is_binary() && op.precedence().is_some() => {
+				let mut prec = op.precedence().unwrap();
+				if op.is_right_associative() {
+					prec -= 1;
 				}
+				let right = self.parse_expression_precedence(prec)?;
+				Expression::new(ExpressionKind::Operator(op), vec![left, right])
 			}
-			TokenKind::Keyword(Keyword::Let) => {
-				let var = self.parse_var_decl()?;
-				Ok(Expression::new(
-					ExpressionKind::ParsedDeclaration(var),
-					vec![],
-				))
+			// Postfix operators
+			TokenKind::Operator(Operator::As) => {
+				let ty = self.parse_type()?;
+				Expression::new(ExpressionKind::Cast(ty), vec![left])
+			}
+			TokenKind::Operator(Operator::Dot) => {
+				let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
+				Expression::new(ExpressionKind::StructAccess(name), vec![left])
+			}
+			TokenKind::LeftParen => {
+				let name = match left.kind {
+					ExpressionKind::Identifier(name) => name,
+					_ => unimplemented!("no dynamic calls yet"),
+				};
+				let mut exp = Expression::new(ExpressionKind::Call(name), vec![]);
+				self.parse_comma_list(|selfish: &mut Self| {
+					exp.children.push(selfish.parse_expression()?);
+					Ok(())
+				})?;
+				exp
+			}
+			TokenKind::LeftBracket => {
+				let index_exp = self.parse_expression()?;
+				expect_token!(self.next()?, TokenKind::RightBracket)?;
+				Expression::new(ExpressionKind::ArrayIndex, vec![left, index_exp])
+			}
+			_ => unimplemented!("Unhandled infix token: {:?}", token),
+		})
+	}
+
+	fn parse_expression_prefix(&mut self, token: Token) -> Result<Expression, ParserError> {
+		Ok(match token.kind {
+			TokenKind::Identifier(name) => {
+				Expression::new(ExpressionKind::Identifier(name), vec![])
+			}
+			TokenKind::Number(number) => {
+				Expression::new(ExpressionKind::NumberLiteral(number), vec![])
+			}
+			TokenKind::Keyword(value @ (Keyword::True | Keyword::False)) => {
+				Expression::new(ExpressionKind::BoolLiteral(value == Keyword::True), vec![])
+			}
+			TokenKind::StringLiteral(content) => {
+				Expression::new(ExpressionKind::StringLiteral(content), vec![])
 			}
 			TokenKind::LeftParen => {
 				let exp = self.parse_expression()?;
 				expect_token!(self.next()?, TokenKind::RightParen)?;
-				Ok(exp)
+				exp
 			}
 			TokenKind::Operator(
 				op @ (Operator::Sub | Operator::Not | Operator::Multiply | Operator::BitAnd),
 			) => {
-				let child = self.parse_expression_primary()?;
+				let child = self.parse_expression()?;
 				let op = match op {
 					Operator::Sub => Operator::Negate,
 					Operator::Multiply => Operator::Dereference,
 					Operator::BitAnd => Operator::Reference,
 					op => op,
 				};
-				Ok(Expression::new(ExpressionKind::Operator(op), vec![child]))
+				Expression::new(ExpressionKind::Operator(op), vec![child])
 			}
-			TokenKind::StringLiteral(content) => Ok(Expression::new(
-				ExpressionKind::StringLiteral(content),
-				vec![],
-			)),
 			TokenKind::LeftBracket => {
 				let mut arr = Vec::new();
 				while self.peek()?.kind != TokenKind::RightBracket {
@@ -579,53 +523,44 @@ impl Parser {
 					arr.push(exp);
 				}
 				self.next()?;
-				Ok(Expression::new(ExpressionKind::ArrayLiteral, arr))
+				Expression::new(ExpressionKind::ArrayLiteral, arr)
 			}
-			kind => {
-				todo!("expression {:?}", kind);
+			TokenKind::Keyword(Keyword::Let) => {
+				let var = self.parse_var_decl()?;
+				Expression::new(ExpressionKind::Declaration(var), vec![])
 			}
-		}
-	}
-
-	fn parse_expression_inner(&mut self, prec: i32) -> Result<Expression, ParserError> {
-		let span = self
-			.tokens
-			.peek()
-			.map(|x| x.span.clone())
-			.unwrap_or_default();
-		self.parse_expression_inner_inner(prec).map(|mut exp| {
-			exp.span = span;
-			exp
+			_ => todo!("Unhandled prefix token: {:?}", token),
 		})
 	}
 
-	fn parse_expression_inner_inner(&mut self, prec: i32) -> Result<Expression, ParserError> {
-		// FIXME: x.y.z gets parsed as x.(y.z) when it should be (x.y).z
-		if prec > Operator::MAX_PRECEDENCE {
-			return self.parse_expression_primary();
-		}
-		let part = self.parse_expression_inner(prec + 1)?;
-		let next = self.peek()?;
-		match next.kind {
-			TokenKind::Operator(operator) if operator.precedence() == prec => {
-				self.next()?;
-				if operator == Operator::As {
-					Ok(Expression::new(
-						ExpressionKind::ParsedCast(self.parse_type()?),
-						vec![part],
-					))
-				} else {
-					Ok(Expression::new(
-						ExpressionKind::Operator(operator),
-						vec![part, self.parse_expression_inner(prec)?],
-					))
-				}
-			}
-			_ => Ok(part),
-		}
+	fn parse_expression(&mut self) -> Result<Expression, ParserError> {
+		self.parse_expression_precedence(0)
 	}
 
-	fn parse_expression(&mut self) -> Result<Expression, ParserError> {
-		self.parse_expression_inner(0)
+	fn parse_expression_precedence(&mut self, precedence: i32) -> Result<Expression, ParserError> {
+		let start = self.get_current_span();
+		let token = self.next()?;
+		let left = self.parse_expression_prefix(token)?;
+		let mut result = left;
+		result.span = start;
+		while precedence < self.get_next_infix_precedence()? {
+			let start = self.get_current_span();
+			let token = self.next()?;
+			result = self.parse_expression_infix(token, result)?;
+			result.span = start;
+		}
+		Ok(result)
+	}
+
+	fn get_next_infix_precedence(&mut self) -> Result<i32, ParserError> {
+		let token = self.peek()?;
+		Ok(Parser::get_expression_precedence(token))
+	}
+
+	fn get_current_span(&mut self) -> Span {
+		self.tokens
+			.peek()
+			.map(|x| x.span.clone())
+			.unwrap_or_default()
 	}
 }
