@@ -89,9 +89,9 @@ impl Expression {
 pub enum StatementKind {
 	Expression,
 	Return,
-	If(Rc<Scope>, Option<Box<Statement>>),
-	While(Rc<Scope>),
-	Block(Rc<Scope>),
+	If(Scope, Option<Box<Statement>>),
+	While(Scope),
+	Block(Scope),
 }
 
 #[derive(Debug)]
@@ -113,31 +113,14 @@ impl Statement {
 	}
 }
 
+#[derive(Debug)]
 pub struct Scope {
-	pub parent: Option<Rc<Scope>>,
 	pub statements: Vec<Statement>,
-	pub children: Vec<Scope>,
-}
-
-impl std::fmt::Debug for Scope {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("Scope")
-			.field(
-				"parent",
-				self.parent.as_ref().map_or(&"None", |_| &"Some(...)"),
-			)
-			.field("statements", &self.statements)
-			.finish()
-	}
 }
 
 impl Scope {
-	fn new(parent: Option<Rc<Scope>>) -> Scope {
-		Scope {
-			parent,
-			statements: vec![],
-			children: vec![],
-		}
+	fn new() -> Scope {
+		Scope { statements: vec![] }
 	}
 }
 
@@ -155,7 +138,7 @@ impl Function {
 			name,
 			arguments: vec![],
 			return_type: Type::Unknown,
-			scope: Scope::new(None),
+			scope: Scope::new(),
 		}
 	}
 }
@@ -332,8 +315,8 @@ impl Parser {
 		Ok(result)
 	}
 
-	fn parse_scope(&mut self, parent: Option<Rc<Scope>>) -> Result<Scope, ParserError> {
-		let mut scope = Scope::new(parent);
+	fn parse_scope(&mut self) -> Result<Scope, ParserError> {
+		let mut scope = Scope::new();
 		scope.statements = self.parse_block()?;
 		Ok(scope)
 	}
@@ -382,16 +365,13 @@ impl Parser {
 			TokenKind::Keyword(Keyword::While) => {
 				self.next()?; // While
 				let condition = self.parse_expression()?;
-				let scope = self.parse_scope(None)?;
-				Ok(Statement::new(
-					StatementKind::While(Rc::new(scope)),
-					vec![condition],
-				))
+				let scope = self.parse_scope()?;
+				Ok(Statement::new(StatementKind::While(scope), vec![condition]))
 			}
 			TokenKind::Keyword(Keyword::If) => {
 				self.next()?; // If
 				let condition = self.parse_expression()?;
-				let scope = self.parse_scope(None)?;
+				let scope = self.parse_scope()?;
 				let mut else_branch = None;
 				if matches!(self.peek()?.kind, TokenKind::Keyword(Keyword::Else)) {
 					self.next()?; // Else
@@ -404,14 +384,11 @@ impl Parser {
 						}
 					}
 				}
-				let stmt = Statement::new(
-					StatementKind::If(Rc::new(scope), else_branch),
-					vec![condition],
-				);
+				let stmt = Statement::new(StatementKind::If(scope, else_branch), vec![condition]);
 				Ok(stmt)
 			}
 			TokenKind::LeftBrace => Ok(Statement::new(
-				StatementKind::Block(Rc::new(self.parse_scope(None)?)),
+				StatementKind::Block(self.parse_scope()?),
 				vec![],
 			)),
 			_ => Ok(Statement::new(

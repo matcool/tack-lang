@@ -28,8 +28,6 @@ fn check_compatibility() {
 }
 
 fn main() {
-	check_compatibility();
-
 	let mut input = None;
 	let mut output = None;
 	let mut build = false;
@@ -58,6 +56,9 @@ fn main() {
 		print_help_and_exit();
 	};
 
+	if build {
+		check_compatibility();
+	}
 	run(input, output.clone(), Some("graph.gv".into()), build);
 
 	if let Some(output) = output {
