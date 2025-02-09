@@ -93,7 +93,7 @@ impl TypeChecker {
 		let scope = Rc::new(Scope::new(None));
 		let mut checker = FunctionTypeChecker {
 			ast: &mut self.ast,
-			function: &function,
+			function: function,
 			scope: Rc::clone(&scope),
 		};
 		for statement in parsed.statements {
@@ -134,8 +134,8 @@ impl FunctionTypeChecker<'_> {
 	fn check_scope(&mut self, parsed: parser::Scope) -> Result<Rc<Scope>, TypeCheckerError> {
 		let scope = Rc::new(Scope::new(Some(Rc::clone(&self.scope))));
 		let mut checker = FunctionTypeChecker {
-			ast: &mut self.ast,
-			function: &self.function,
+			ast: self.ast,
+			function: self.function,
 			scope: Rc::clone(&scope),
 		};
 		for statement in parsed.statements {
@@ -311,7 +311,7 @@ impl FunctionTypeChecker<'_> {
 				expr
 			}
 			parser::ExpressionKind::Identifier(ref name) => {
-				let Some(var) = self.find_variable(&name) else {
+				let Some(var) = self.find_variable(name) else {
 					Err(TypeCheckerError::VariableNotFound(name.clone()))?
 				};
 				self.check_expression_into(parsed, var.ty.add_reference())?

@@ -57,7 +57,7 @@ impl Compiler<'_> {
 			function.name
 		);
 
-		self.compile_scope(&*function.scope);
+		self.compile_scope(&function.scope);
 
 		output += &self.declarations;
 		output += &self.body;
@@ -84,7 +84,7 @@ impl Compiler<'_> {
 			StatementKind::If(scope, else_stmt) => {
 				let cond = self.compile_expression(&stmt.children[0]);
 				self.body += &format!("if ({cond}) {{\n");
-				self.compile_scope(&*scope);
+				self.compile_scope(scope);
 				self.body += &format!("}}\n");
 				if let Some(else_stmt) = else_stmt {
 					self.body += &format!("else {{\n");
@@ -111,6 +111,7 @@ impl Compiler<'_> {
 				},
 				n,
 			),
+			ExpressionKind::BoolLiteral(b) => self.allocate_value_and_set(expr.value_type, b),
 			ExpressionKind::Operator(Operator::Assign) => {
 				let left = self.compile_expression(&expr.children[0]);
 				let right = self.compile_expression(&expr.children[1]);

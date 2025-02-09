@@ -83,7 +83,7 @@ pub struct LexerIterator<'a, I: Iterator<Item = char>> {
 	lexer: &'a mut Lexer<I>,
 }
 
-impl<'a, I: Iterator<Item = char>> Iterator for LexerIterator<'a, I> {
+impl<I: Iterator<Item = char>> Iterator for LexerIterator<'_, I> {
 	type Item = Token;
 
 	fn next(&mut self) -> Option<Self::Item> {
