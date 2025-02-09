@@ -1,7 +1,6 @@
 mod ast;
 mod checker;
-// pub mod compiler;
-// pub mod graph;
+mod compiler;
 mod dump;
 mod lexer;
 mod parser;

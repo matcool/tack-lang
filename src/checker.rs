@@ -133,8 +133,13 @@ impl AST {
 impl FunctionTypeChecker<'_> {
 	fn check_scope(&mut self, parsed: parser::Scope) -> Result<Rc<Scope>, TypeCheckerError> {
 		let scope = Rc::new(Scope::new(Some(Rc::clone(&self.scope))));
+		let mut checker = FunctionTypeChecker {
+			ast: &mut self.ast,
+			function: &self.function,
+			scope: Rc::clone(&scope),
+		};
 		for statement in parsed.statements {
-			let stmt = self.check_statement(statement)?;
+			let stmt = checker.check_statement(statement)?;
 			scope.add_statement(stmt);
 		}
 		Ok(scope)
@@ -305,6 +310,12 @@ impl FunctionTypeChecker<'_> {
 				expr.value_type = ty.add_reference();
 				expr
 			}
+			parser::ExpressionKind::Identifier(ref name) => {
+				let Some(var) = self.find_variable(&name) else {
+					Err(TypeCheckerError::VariableNotFound(name.clone()))?
+				};
+				self.check_expression_into(parsed, var.ty.add_reference())?
+			}
 			_ => todo!("{:?}", parsed),
 		})
 	}
@@ -344,13 +355,18 @@ impl FunctionTypeChecker<'_> {
 		expression.value_type
 	}
 
-	fn find_variable(name: &str, scope: &Scope, function: &Function) -> Option<Variable> {
-		if let Some(var) = scope.find_variable(name) {
+	fn find_variable(&self, name: &str) -> Option<Variable> {
+		if let Some(var) = self.scope.find_variable(name) {
 			return Some(var);
-		} else if let Some(var) = scope.parent.clone().and_then(|s| s.find_variable(name)) {
+		} else if let Some(var) = self
+			.scope
+			.parent
+			.clone()
+			.and_then(|s| s.find_variable(name))
+		{
 			return Some(var);
 		}
-		function
+		self.function
 			.arguments
 			.iter()
 			.find(|var| var.name == name)
