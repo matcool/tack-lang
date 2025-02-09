@@ -90,6 +90,7 @@ impl TypeRef {
 #[derive(Debug, Clone)]
 pub struct Variable {
 	pub name: String,
+	pub unique_id: usize,
 	pub ty: TypeRef,
 }
 
@@ -98,7 +99,7 @@ pub enum ExpressionKind {
 	NumberLiteral(i64),
 	BoolLiteral(bool),
 	Declaration(Variable),
-	Identifier(String),
+	Identifier(Variable),
 	Operator(Operator),
 	// TODO: should just use child expression instead of function name
 	Call(String),
@@ -118,7 +119,7 @@ impl TryFrom<parser::ExpressionKind> for ExpressionKind {
 			parser::ExpressionKind::NumberLiteral(n) => ExpressionKind::NumberLiteral(n),
 			parser::ExpressionKind::BoolLiteral(b) => ExpressionKind::BoolLiteral(b),
 			// parser::ExpressionKind::Declaration(var) => ExpressionKind::Declaration(var),
-			parser::ExpressionKind::Identifier(name) => ExpressionKind::Identifier(name),
+			// parser::ExpressionKind::Identifier(name) => ExpressionKind::Identifier(name),
 			parser::ExpressionKind::Operator(op) => ExpressionKind::Operator(op),
 			parser::ExpressionKind::Call(name) => ExpressionKind::Call(name),
 			parser::ExpressionKind::Cast(_) => ExpressionKind::Cast,
@@ -184,21 +185,43 @@ pub struct Scope {
 	// even though the scope is referenced in a child scope
 	pub statements: RefCell<Vec<Statement>>,
 	pub variables: RefCell<Vec<Variable>>,
+	var_counter: RefCell<usize>,
 }
 
 impl Scope {
+	pub fn new(parent: Option<Rc<Scope>>) -> Scope {
+		Scope {
+			parent,
+			statements: vec![].into(),
+			variables: vec![].into(),
+			var_counter: 1.into(),
+		}
+	}
+
 	pub fn add_statement(&self, statement: Statement) {
 		self.statements.borrow_mut().push(statement);
 	}
 
-	pub fn add_variable(&self, variable: Variable) {
-		self.variables.borrow_mut().push(variable);
+	fn next_var_counter(&self) -> usize {
+		if let Some(parent) = &self.parent {
+			parent.next_var_counter()
+		} else {
+			self.var_counter.replace_with(|&mut prev| prev + 1)
+		}
+	}
+
+	/// Adds a variable into the scope. Returned `Variable` contains a set unique_id.
+	pub fn add_variable(&self, mut variable: Variable) -> Variable {
+		variable.unique_id = self.next_var_counter();
+		self.variables.borrow_mut().push(variable.clone());
+		variable
 	}
 
 	pub fn find_variable(&self, name: &str) -> Option<Variable> {
 		self.variables
 			.borrow()
 			.iter()
+			.rev()
 			.find(|var| var.name == name)
 			.cloned()
 	}
@@ -214,17 +237,6 @@ impl std::fmt::Debug for Scope {
 			.field("statements", &self.statements)
 			.field("variables", &self.variables)
 			.finish()
-	}
-}
-
-impl Scope {
-	pub fn new(parent: Option<Rc<Scope>>) -> Scope {
-		Scope {
-			parent,
-			statements: vec![].into(),
-			variables: vec![].into(),
-			// children: vec![].into(),
-		}
 	}
 }
 
@@ -317,10 +329,12 @@ impl AST {
 			fields: vec![
 				Variable {
 					name: "data".into(),
+					unique_id: 0,
 					ty: u8_ptr,
 				},
 				Variable {
 					name: "size".into(),
+					unique_id: 0,
 					ty: BUILTIN_TYPE_I32,
 				},
 			],

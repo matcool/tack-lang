@@ -19,12 +19,12 @@ pub fn invoke_command(args: String) -> Output {
 }
 
 pub fn run<S: AsRef<std::path::Path> + Into<PathBuf> + Clone>(
-	input: S,
+	input_path: S,
 	output_path: Option<String>,
 	graph_file: Option<String>,
 	build: bool,
 ) {
-	let contents = match std::fs::read_to_string(input.clone()) {
+	let contents = match std::fs::read_to_string(input_path.clone()) {
 		Ok(value) => value,
 		Err(value) => {
 			println!("Error: {value}");
@@ -38,12 +38,12 @@ pub fn run<S: AsRef<std::path::Path> + Into<PathBuf> + Clone>(
 	let mut parser = Parser::new(tokens.into_iter().peekable());
 	parser.parse().unwrap();
 
-	let mut checker = TypeChecker::new(input.into());
-	let asts = checker.check(parser).unwrap();
+	let asts = TypeChecker::new(input_path.into()).check(parser).unwrap();
+	let ast = &asts[0];
 
-	crate::dump::dump(&checker.ast);
+	crate::dump::dump(ast);
 
-	let compiled = Compiler::new(&checker.ast).compile();
+	let compiled = Compiler::new(ast).compile();
 	if let Some(output) = output_path {
 		std::fs::write(&output, compiled).unwrap();
 	} else {

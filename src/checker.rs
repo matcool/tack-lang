@@ -2,11 +2,11 @@ use std::{path::PathBuf, rc::Rc};
 
 use crate::{
 	ast::{
-		self, BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind,
+		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind,
 		StructType, Type, TypeRef, Variable, AST, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_I32,
 		BUILTIN_TYPE_INT_LITERAL, BUILTIN_TYPE_VOID,
 	},
-	lexer::Operator,
+	lexer::{Operator, Span},
 	parser::{self, Parser},
 };
 
@@ -44,8 +44,8 @@ impl TypeChecker {
 		}
 	}
 
-	pub fn check(&mut self, parser: Parser) -> Result<Vec<AST>, TypeCheckerError> {
-		let asts = Vec::new();
+	pub fn check(mut self, parser: Parser) -> Result<Vec<AST>, TypeCheckerError> {
+		let mut asts = Vec::new();
 
 		for parsed_struct in parser.parsed_structs {
 			let mut fields: Vec<Variable> = vec![];
@@ -66,6 +66,7 @@ impl TypeChecker {
 			self.ast.functions.push(function);
 		}
 
+		asts.insert(0, self.ast);
 		Ok(asts)
 	}
 
@@ -93,7 +94,7 @@ impl TypeChecker {
 		let scope = Rc::new(Scope::new(None));
 		let mut checker = FunctionTypeChecker {
 			ast: &mut self.ast,
-			function: function,
+			function,
 			scope: Rc::clone(&scope),
 		};
 		for statement in parsed.statements {
@@ -125,6 +126,7 @@ impl AST {
 	fn check_parsed_var(&mut self, parsed: parser::Variable) -> Result<Variable, TypeCheckerError> {
 		Ok(Variable {
 			name: parsed.name.clone(),
+			unique_id: 0,
 			ty: self.check_parsed_type(parsed.ty)?,
 		})
 	}
@@ -301,20 +303,24 @@ impl FunctionTypeChecker<'_> {
 				expr
 			}
 			parser::ExpressionKind::Declaration(parsed_var) => {
-				let var = self.ast.check_parsed_var(parsed_var)?;
-				self.scope.add_variable(var.clone());
-				let ty = var.ty;
-				let mut expr = Expression::new(ExpressionKind::Declaration(var), vec![]);
-				// TODO: thjis is kinda nasty maybe have check_expression_with idfk
-				expr.span = parsed.span;
-				expr.value_type = ty.add_reference();
-				expr
+				let var = self
+					.scope
+					.add_variable(self.ast.check_parsed_var(parsed_var)?);
+				self.check_expression_with(
+					var.ty.add_reference(),
+					ExpressionKind::Declaration(var),
+					parsed.span,
+				)
 			}
 			parser::ExpressionKind::Identifier(ref name) => {
 				let Some(var) = self.find_variable(name) else {
 					Err(TypeCheckerError::VariableNotFound(name.clone()))?
 				};
-				self.check_expression_into(parsed, var.ty.add_reference())?
+				self.check_expression_with(
+					var.ty.add_reference(),
+					ExpressionKind::Identifier(var),
+					parsed.span,
+				)
 			}
 			_ => todo!("{:?}", parsed),
 		})
@@ -337,6 +343,18 @@ impl FunctionTypeChecker<'_> {
 		expr.value_type = ty;
 		expr.span = parsed.span;
 		Ok(expr)
+	}
+
+	fn check_expression_with(
+		&mut self,
+		ty: TypeRef,
+		kind: ExpressionKind,
+		span: Span,
+	) -> Expression {
+		let mut expr = Expression::new(kind, vec![]);
+		expr.value_type = ty;
+		expr.span = span;
+		expr
 	}
 
 	fn promote_int_literal_into(&self, expression: &mut Expression, type_ref: TypeRef) -> TypeRef {

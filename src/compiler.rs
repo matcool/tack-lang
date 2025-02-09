@@ -12,7 +12,7 @@ pub struct Compiler<'a> {
 	declarations: String,
 	body: String,
 	counter: i32,
-	variables: HashMap<String, String>,
+	variables: HashMap<usize, String>,
 }
 
 impl Compiler<'_> {
@@ -131,12 +131,11 @@ impl Compiler<'_> {
 			}
 			ExpressionKind::Declaration(var) => {
 				let value = self.allocate_value(var.ty);
-				// TODO: scoped variables
-				self.variables.insert(var.name.clone(), value.clone());
+				self.variables.insert(var.unique_id, value.clone());
 				format!("(&{value})")
 			}
-			ExpressionKind::Identifier(name) => {
-				let value = self.variables.get(name).unwrap().clone();
+			ExpressionKind::Identifier(var) => {
+				let value = self.variables.get(&var.unique_id).unwrap().clone();
 				format!("(&{value})")
 			}
 			ExpressionKind::Cast => {

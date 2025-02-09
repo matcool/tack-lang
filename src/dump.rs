@@ -73,7 +73,20 @@ fn dump_statement(ast: &AST, stmt: &Statement, indent: &str) {
 fn dump_expression(ast: &AST, expr: &Expression, indent: &str) {
 	let name = match &expr.kind {
 		ExpressionKind::Declaration(var) => {
-			format!("Declaration({}: {})", var.name, var.ty.formatted(ast))
+			format!(
+				"Declaration({} ({}): {})",
+				var.name,
+				var.unique_id,
+				var.ty.formatted(ast)
+			)
+		}
+		ExpressionKind::Identifier(var) => {
+			format!(
+				"Identifier({} ({}): {})",
+				var.name,
+				var.unique_id,
+				var.ty.formatted(ast)
+			)
 		}
 		k => format!("{:?}", k),
 	};
