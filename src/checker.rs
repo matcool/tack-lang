@@ -80,8 +80,11 @@ impl TypeChecker {
 		let mut function = Function::new(parsed.name);
 		function.return_type = return_type;
 		function.arguments = arguments;
-		let scope = self.check_function_scope(parsed.scope, &mut function)?;
-		function.scope = scope.into();
+		function.attributes = parsed.attributes;
+		if !function.attributes.is_c_extern {
+			let scope = self.check_function_scope(parsed.scope, &mut function)?;
+			function.scope = scope.into();
+		}
 
 		Ok(function)
 	}

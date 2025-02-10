@@ -1,0 +1,9 @@
+// returns 4
+
+@c_extern fn malloc(size: uptr): void*;
+
+fn main(): i32 {
+	let buffer: u8* = malloc(4) as u8*;
+	buffer[0] = 4;
+	return buffer[0] as i32;
+}

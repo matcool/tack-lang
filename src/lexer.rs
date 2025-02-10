@@ -14,6 +14,11 @@ pub enum Keyword {
 	Import,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Attribute {
+	CExtern,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Operator {
 	Assign,
@@ -59,6 +64,7 @@ pub enum TokenKind {
 	TypeIndicator,
 	Comma,
 	StringLiteral(String),
+	Attribute(Attribute),
 }
 
 #[derive(Debug, Clone, Default)]
@@ -252,13 +258,22 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 					self.next();
 					TokenKind::StringLiteral(str)
 				}
+				'@' => {
+					let identifier: String = self
+						.peeking_take_while(|c| c.is_alphanumeric() || c == &'_')
+						.collect();
+					match identifier.as_str() {
+						"c_extern" => TokenKind::Attribute(Attribute::CExtern),
+						_ => panic!("unknown attribute \"{identifier}\""),
+					}
+				}
 				ch => {
-					let mut identifer: String = self
+					let mut identifier: String = self
 						.peeking_take_while(|c| c.is_alphanumeric() || c == &'_')
 						.collect();
 					// not very elegant :(
-					identifer.insert(0, ch);
-					match identifer.as_str() {
+					identifier.insert(0, ch);
+					match identifier.as_str() {
 						"let" => TokenKind::Keyword(Keyword::Let),
 						"fn" => TokenKind::Keyword(Keyword::Fn),
 						"true" => TokenKind::Keyword(Keyword::True),
@@ -270,7 +285,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 						"struct" => TokenKind::Keyword(Keyword::Struct),
 						"as" => TokenKind::Operator(Operator::As),
 						"import" => TokenKind::Keyword(Keyword::Import),
-						_ => TokenKind::Identifier(identifer),
+						_ => TokenKind::Identifier(identifier),
 					}
 				}
 			},

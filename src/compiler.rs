@@ -106,16 +106,20 @@ typedef uintptr_t uptr;\n";
 			.join(", ");
 
 		output += &format!(
-			"{} {}({args}) {{\n",
+			"{} {}({args})",
 			self.format_type(function.return_type),
 			function.name
 		);
 
-		self.compile_scope(&function.scope);
-
-		output += &self.declarations;
-		output += &self.body;
-		output += "}\n";
+		if function.attributes.is_c_extern {
+			output += ";\n";
+		} else {
+			output += " {\n";
+			self.compile_scope(&function.scope);
+			output += &self.declarations;
+			output += &self.body;
+			output += "}\n";
+		}
 
 		output
 	}

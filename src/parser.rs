@@ -1,4 +1,7 @@
-use crate::lexer::{Keyword, Operator, Span, Token, TokenKind};
+use crate::{
+	ast,
+	lexer::{Attribute, Keyword, Operator, Span, Token, TokenKind},
+};
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -132,6 +135,7 @@ pub struct Function {
 	pub arguments: Vec<Variable>,
 	pub return_type: Type,
 	pub scope: Scope,
+	pub attributes: ast::FunctionAttributes,
 }
 
 impl Function {
@@ -141,6 +145,7 @@ impl Function {
 			arguments: vec![],
 			return_type: Type::Unknown,
 			scope: Scope::new(),
+			attributes: Default::default(),
 		}
 	}
 }
@@ -216,33 +221,9 @@ impl Parser {
 		while let Ok(token) = self.next() {
 			match token.kind {
 				TokenKind::Keyword(Keyword::Fn) => {
-					let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
-
-					let mut function = Function::new(name);
-
-					expect_token!(self.next()?, TokenKind::LeftParen)?;
-					self.parse_comma_list(|selfish: &mut Self| {
-						function.arguments.push(selfish.parse_var_decl()?);
-						Ok(())
-					})?;
-
-					let next = self.peek()?;
-					match next.kind {
-						TokenKind::TypeIndicator => {
-							self.next()?;
-							function.return_type = self.parse_type()?;
-						}
-						TokenKind::LeftBrace => {
-							function.return_type = Type::Name("void".to_string());
-						}
-						_ => {
-							error_at_token!(self.next()?, "function return type");
-						}
-					}
-
+					let mut function = self.parse_function_decl()?;
 					let statements = self.parse_block()?;
 					function.scope.statements = statements;
-
 					self.functions.push(function);
 				}
 				TokenKind::Keyword(Keyword::Struct) => {
@@ -268,12 +249,48 @@ impl Parser {
 					let file_path = expect_token!(self.next()?, TokenKind::StringLiteral(x), x)?;
 					self.imported_files.push(file_path);
 				}
+				TokenKind::Attribute(Attribute::CExtern) => {
+					expect_token!(self.next()?, TokenKind::Keyword(Keyword::Fn))?;
+					let mut function = self.parse_function_decl()?;
+					expect_token!(self.next()?, TokenKind::Semicolon)?;
+					function.attributes.is_c_extern = true;
+					self.functions.push(function);
+				}
 				_ => {
 					error_at_token!(token, "unexpected token outside function, great error btw");
 				}
 			}
 		}
 		Ok(())
+	}
+
+	/// Parse the very beginning of a function and return it, with an empty scope
+	fn parse_function_decl(&mut self) -> Result<Function, ParserError> {
+		let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
+
+		let mut function = Function::new(name);
+
+		expect_token!(self.next()?, TokenKind::LeftParen)?;
+		self.parse_comma_list(|selfish: &mut Self| {
+			function.arguments.push(selfish.parse_var_decl()?);
+			Ok(())
+		})?;
+
+		let next = self.peek()?;
+		match next.kind {
+			TokenKind::TypeIndicator => {
+				self.next()?;
+				function.return_type = self.parse_type()?;
+			}
+			TokenKind::LeftBrace => {
+				function.return_type = Type::Name("void".to_string());
+			}
+			_ => {
+				error_at_token!(self.next()?, "function return type");
+			}
+		}
+
+		Ok(function)
 	}
 
 	fn parse_comma_list<C: FnMut(&mut Self) -> Result<(), ParserError>>(

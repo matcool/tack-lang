@@ -268,13 +268,18 @@ impl std::fmt::Debug for Scope {
 	}
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct FunctionAttributes {
+	pub is_c_extern: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct Function {
 	pub name: String,
 	pub arguments: Vec<Variable>,
 	pub return_type: TypeRef,
 	pub scope: Rc<Scope>,
-	pub is_extern: bool,
+	pub attributes: FunctionAttributes,
 }
 
 impl Function {
@@ -284,7 +289,7 @@ impl Function {
 			arguments: vec![],
 			return_type: TypeRef::unknown(),
 			scope: Rc::new(Scope::new(None)),
-			is_extern: false,
+			attributes: Default::default(),
 		}
 	}
 }
