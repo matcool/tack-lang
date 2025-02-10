@@ -321,10 +321,10 @@ typedef uintptr_t uptr;\n";
 		if self.ast.is_array(ty) {
 			return self.add_array(ty);
 		}
-		let mut formatted_type = ty.remove_reference().formatted(self.ast);
-		if self.ast.is_struct(ty) {
-			formatted_type = "struct ".to_string() + &formatted_type;
+		match self.ast.get_type(ty) {
+			Type::Pointer(inner) => format!("{}*", self.format_type(*inner)),
+			Type::Struct(struct_type) => format!("struct {}", struct_type.name),
+			_ => ty.remove_reference().formatted(self.ast),
 		}
-		formatted_type
 	}
 }

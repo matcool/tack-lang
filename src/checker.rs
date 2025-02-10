@@ -386,6 +386,7 @@ impl FunctionTypeChecker<'_> {
 					));
 				};
 				if self.ast.is_pointer(struct_expr.value_type) {
+					struct_expr.cast_if_reference();
 					struct_expr = Expression::new(
 						struct_ty.add_reference(),
 						ExpressionKind::Operator(Operator::Dereference),
