@@ -36,12 +36,7 @@ impl Compiler<'_> {
 	}
 
 	pub fn compile(mut self) -> String {
-		let header = "\
-#include <stdbool.h>
-#include <stdint.h>
-typedef int32_t i32;
-typedef uint8_t u8;
-typedef uintptr_t uptr;\n";
+		let header = "#include <tack_runtime.h>\n";
 
 		for ty in &self.ast.types {
 			if let Type::Struct(struct_type) = ty {

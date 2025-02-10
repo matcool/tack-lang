@@ -2,7 +2,9 @@ use crate::ast::{Expression, ExpressionKind, Function, Scope, Statement, Stateme
 
 pub fn dump(ast: &AST) {
 	for func in &ast.functions {
-		dump_function(ast, func);
+		if !func.attributes.is_c_extern {
+			dump_function(ast, func);
+		}
 	}
 }
 

@@ -335,6 +335,7 @@ impl AST {
 			..Default::default()
 		};
 		ast.add_builtin_types();
+		ast.add_builtin_functions();
 		ast
 	}
 
@@ -362,6 +363,66 @@ impl AST {
 				},
 			],
 		}));
+	}
+
+	fn add_builtin_functions(&mut self) {
+		let void_ptr = self.find_type_or_add(Type::Pointer(BUILTIN_TYPE_VOID));
+		self.functions.push(Function {
+			name: "builtin_malloc".into(),
+			arguments: vec![Variable {
+				name: "size".into(),
+				ty: BUILTIN_TYPE_UPTR,
+				unique_id: 0,
+			}],
+			return_type: void_ptr,
+			attributes: FunctionAttributes { is_c_extern: true },
+			scope: Scope::new(None).into(),
+		});
+		self.functions.push(Function {
+			name: "builtin_free".into(),
+			arguments: vec![Variable {
+				name: "ptr".into(),
+				ty: void_ptr,
+				unique_id: 0,
+			}],
+			return_type: BUILTIN_TYPE_VOID,
+			attributes: FunctionAttributes { is_c_extern: true },
+			scope: Scope::new(None).into(),
+		});
+		self.functions.push(Function {
+			name: "builtin_memcpy".into(),
+			arguments: vec![
+				Variable {
+					name: "dst".into(),
+					ty: void_ptr,
+					unique_id: 0,
+				},
+				Variable {
+					name: "src".into(),
+					ty: void_ptr,
+					unique_id: 0,
+				},
+				Variable {
+					name: "size".into(),
+					ty: BUILTIN_TYPE_UPTR,
+					unique_id: 0,
+				},
+			],
+			return_type: void_ptr,
+			attributes: FunctionAttributes { is_c_extern: true },
+			scope: Scope::new(None).into(),
+		});
+		self.functions.push(Function {
+			name: "builtin_print".into(),
+			arguments: vec![Variable {
+				name: "str".into(),
+				ty: BUILTIN_TYPE_STR,
+				unique_id: 0,
+			}],
+			return_type: BUILTIN_TYPE_VOID,
+			attributes: FunctionAttributes { is_c_extern: true },
+			scope: Scope::new(None).into(),
+		});
 	}
 
 	fn find_type<P: FnMut(&&Type) -> bool>(&self, predicate: P) -> Option<TypeRef> {
