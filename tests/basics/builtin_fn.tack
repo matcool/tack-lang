@@ -1,11 +1,11 @@
 // returns 4
 
 fn main(): i32 {
-	let buffer: u8* = builtin_malloc(4) as u8*;
-	let buffer2: u8* = builtin_malloc(4) as u8*;
+	let buffer: u8* = tack_malloc(4) as u8*;
+	let buffer2: u8* = tack_malloc(4) as u8*;
 	buffer[0] = 4;
-	builtin_memcpy(buffer2 as void*, buffer as void*, 4);
-	builtin_free(buffer as void*);
-	builtin_print("Hello!");
+	tack_memcpy(buffer2 as void*, buffer as void*, 4);
+	tack_free(buffer as void*);
+	tack_print("Hello!");
 	return buffer2[0] as i32;
 }

@@ -368,7 +368,7 @@ impl AST {
 	fn add_builtin_functions(&mut self) {
 		let void_ptr = self.find_type_or_add(Type::Pointer(BUILTIN_TYPE_VOID));
 		self.functions.push(Function {
-			name: "builtin_malloc".into(),
+			name: "tack_malloc".into(),
 			arguments: vec![Variable {
 				name: "size".into(),
 				ty: BUILTIN_TYPE_UPTR,
@@ -379,7 +379,7 @@ impl AST {
 			scope: Scope::new(None).into(),
 		});
 		self.functions.push(Function {
-			name: "builtin_free".into(),
+			name: "tack_free".into(),
 			arguments: vec![Variable {
 				name: "ptr".into(),
 				ty: void_ptr,
@@ -390,7 +390,7 @@ impl AST {
 			scope: Scope::new(None).into(),
 		});
 		self.functions.push(Function {
-			name: "builtin_memcpy".into(),
+			name: "tack_memcpy".into(),
 			arguments: vec![
 				Variable {
 					name: "dst".into(),
@@ -413,7 +413,7 @@ impl AST {
 			scope: Scope::new(None).into(),
 		});
 		self.functions.push(Function {
-			name: "builtin_print".into(),
+			name: "tack_print".into(),
 			arguments: vec![Variable {
 				name: "str".into(),
 				ty: BUILTIN_TYPE_STR,

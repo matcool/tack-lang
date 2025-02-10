@@ -20,8 +20,8 @@ fn print_num(num: i32) {
 	let s: str;
 	s.data = start;
 	s.size = size;
-	builtin_print(s);
-	builtin_print("\n");
+	tack_print(s);
+	tack_print("\n");
 }
 
 struct File {
@@ -36,7 +36,7 @@ struct File {
 @c_extern fn fclose(file: void*): i32;
 
 fn open_file(name: str): File {
-	let c_str: u8* = builtin_malloc((name.size + 1) as uptr) as u8*;
+	let c_str: u8* = tack_malloc((name.size + 1) as uptr) as u8*;
 	let i: i32 = 0;
 	while i < name.size {
 		c_str[i] = name.data[i];
@@ -49,7 +49,7 @@ fn open_file(name: str): File {
 
 	let file: File;
 	file.fd = fd;
-	file.buffer = builtin_malloc(1024) as u8*;
+	file.buffer = tack_malloc(1024) as u8*;
 	file.buffer_size = 0;
 	file.buffer_cap = 1024;
 
@@ -71,7 +71,7 @@ fn file_write(file: File*, data: u8*, size: i32) {
 		if file.buffer_cap - file.buffer_size < size {
 			file_flush(file);
 		}
-		builtin_memcpy((file.buffer + file.buffer_size) as void*, data as void*, size as uptr);
+		tack_memcpy((file.buffer + file.buffer_size) as void*, data as void*, size as uptr);
 		file.buffer_size = file.buffer_size + size;
 	}
 }
@@ -150,7 +150,7 @@ fn save_image(name: str, pixels: i32*, width: i32, height: i32) {
 	prev_color.a = 255;
 	let run_length: i32 = 0;
 
-	let color_array: i32* = builtin_malloc(64 * 4) as i32*;
+	let color_array: i32* = tack_malloc(64 * 4) as i32*;
 	while i < 64 {
 		color_array[i] = 0;
 		i = i + 1;
@@ -231,13 +231,13 @@ fn save_image(name: str, pixels: i32*, width: i32, height: i32) {
 	file_write_byte(&file, 1);
 	file_close(&file);
 
-	builtin_print("Total counts\n");
-	builtin_print("Total RUN: "); print_num(total_run);
-	builtin_print("Total INDEX: "); print_num(total_index);
-	builtin_print("Total DIFF: "); print_num(total_diff);
-	builtin_print("Total LUMA: "); print_num(total_luma);
-	builtin_print("Total RGB: "); print_num(total_rgb);
-	builtin_print("Total RGBA: "); print_num(total_rgba);
+	tack_print("Total counts\n");
+	tack_print("Total RUN: "); print_num(total_run);
+	tack_print("Total INDEX: "); print_num(total_index);
+	tack_print("Total DIFF: "); print_num(total_diff);
+	tack_print("Total LUMA: "); print_num(total_luma);
+	tack_print("Total RGB: "); print_num(total_rgb);
+	tack_print("Total RGBA: "); print_num(total_rgba);
 }
 
 fn make_color(r: u8, g: u8, b: u8): i32 {
@@ -247,8 +247,8 @@ fn make_color(r: u8, g: u8, b: u8): i32 {
 fn main(): i32 {
 	let width: i32 = 256;
 	let height: i32 = 256;
-	builtin_print("welcome!\n");
-	let canvas: i32* = builtin_malloc((width * height * 4) as uptr) as i32*;
+	tack_print("welcome!\n");
+	let canvas: i32* = tack_malloc((width * height * 4) as uptr) as i32*;
 
 	let y: i32 = 0;
 	while y < height {
@@ -263,9 +263,9 @@ fn main(): i32 {
 		y = y + 1;
 	}
 
-	builtin_print("going to save!\n");
+	tack_print("going to save!\n");
 	save_image("./image.qoi", canvas, width, height);
-	builtin_print("saved\n");
+	tack_print("saved\n");
 
 	return 0;
 }
