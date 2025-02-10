@@ -1,15 +1,4 @@
 // generates a qoi image
-// ok i need arrays
-
-fn alloc(size: i32): u8* {
-	// open("/dev/zero", O_RDWR)
-	let fd: uptr = syscall(5, "/dev/zero\0".data, 2, 0);
-	// mmap2(...)
-	let addr: uptr = syscall(0xc0, 0, size, 3, 2, fd, 0);
-	// close(fd)
-	syscall(6, fd);
-	return addr as u8*;
-}
 
 fn print_num(num: i32) {
 	let buffer: u8[16];
@@ -28,57 +17,48 @@ fn print_num(num: i32) {
 		size = size + 1;
 	}
 
-	syscall(1, 1, start, size);
-	syscall(1, 1, "\n".data, 1);
-}
-
-fn print(msg: str) {
-	syscall(1, 1, msg.data, msg.size);
+	let s: str;
+	s.data = start;
+	s.size = size;
+	builtin_print(s);
+	builtin_print("\n");
 }
 
 struct File {
-	fd: uptr;
+	fd: void*;
 	buffer: u8*;
 	buffer_size: i32;
 	buffer_cap: i32;
 }
 
+@c_extern fn fopen(path: u8*, mode: u8*): void*;
+@c_extern fn fwrite(buffer: u8*, size: uptr, count: uptr, file: void*): uptr;
+@c_extern fn fclose(file: void*): i32;
+
 fn open_file(name: str): File {
-	let c_str: u8* = alloc(name.size + 1);
+	let c_str: u8* = builtin_malloc((name.size + 1) as uptr) as u8*;
 	let i: i32 = 0;
 	while i < name.size {
-		c_str[i] = *(name.data + i);
+		c_str[i] = name.data[i];
 		i = i + 1;
 	}
 	c_str[i] = 0;
 
-	// open(c_str, O_CREAT, S_IRWXU)
-	let fd: uptr = syscall(5, c_str, 66, 448);
+	// TODO: relying on c string null term
+	let fd: void* = fopen(c_str, "wb".data);
 
 	let file: File;
 	file.fd = fd;
-	file.buffer = alloc(1024);
+	file.buffer = builtin_malloc(1024) as u8*;
 	file.buffer_size = 0;
 	file.buffer_cap = 1024;
 
 	return file;
 }
 
-fn file_write_raw(fd: uptr, data: u8*, size: i32) {
-	syscall(1, fd, data, size);
-}
-
-fn memcpy(dst: u8*, src: u8*, size: i32) {
-	let i: i32 = 0;
-	while i < size {
-		dst[i] = src[i];
-		i = i + 1;
-	}
-}
-
 fn file_flush(file: File*) {
 	if file.buffer_size != 0 {
-		file_write_raw(file.fd, file.buffer, file.buffer_size);
+		fwrite(file.buffer, 1, file.buffer_size as uptr, file.fd);
 		file.buffer_size = 0;
 	}
 }
@@ -86,12 +66,12 @@ fn file_flush(file: File*) {
 fn file_write(file: File*, data: u8*, size: i32) {
 	if size > file.buffer_cap {
 		file_flush(file);
-		file_write_raw(file.fd, data, size);
+		fwrite(data, 1, size as uptr, file.fd);
 	} else {
 		if file.buffer_cap - file.buffer_size < size {
 			file_flush(file);
 		}
-		memcpy(file.buffer + file.buffer_size, data, size);
+		builtin_memcpy((file.buffer + file.buffer_size) as void*, data as void*, size as uptr);
 		file.buffer_size = file.buffer_size + size;
 	}
 }
@@ -102,7 +82,7 @@ fn file_write_s(file: File*, msg: str) {
 
 fn file_close(file: File*) {
 	file_flush(file);
-	syscall(6, file.fd);
+	fclose(file.fd);
 }
 
 fn file_write_byte(file: File*, byte: u8) {
@@ -170,9 +150,9 @@ fn save_image(name: str, pixels: i32*, width: i32, height: i32) {
 	prev_color.a = 255;
 	let run_length: i32 = 0;
 
-	let color_array: i32* = alloc(64 * 4) as i32*;
+	let color_array: i32* = builtin_malloc(64 * 4) as i32*;
 	while i < 64 {
-		*(color_array + i) = 0;
+		color_array[i] = 0;
 		i = i + 1;
 	}
 	i = 0;
@@ -185,7 +165,7 @@ fn save_image(name: str, pixels: i32*, width: i32, height: i32) {
 	let total_rgba: i32 = 0;
 	
 	while i < width * height {
-		let raw_color: i32 = *(pixels + i);
+		let raw_color: i32 = pixels[i];
 		let color: Color = unpack_color(raw_color);
 		let hash_index: i32 = hash_color(color);
 		if color_eq(color, prev_color) && run_length < 61 {
@@ -236,7 +216,7 @@ fn save_image(name: str, pixels: i32*, width: i32, height: i32) {
 			}
 		}
 
-		*(color_array + hash_index) = pack_color(color);
+		color_array[hash_index] = pack_color(color);
 		prev_color = color;
 		
 		i = i + 1;
@@ -251,13 +231,13 @@ fn save_image(name: str, pixels: i32*, width: i32, height: i32) {
 	file_write_byte(&file, 1);
 	file_close(&file);
 
-	print("Total counts\n");
-	print("Total RUN: "); print_num(total_run);
-	print("Total INDEX: "); print_num(total_index);
-	print("Total DIFF: "); print_num(total_diff);
-	print("Total LUMA: "); print_num(total_luma);
-	print("Total RGB: "); print_num(total_rgb);
-	print("Total RGBA: "); print_num(total_rgba);
+	builtin_print("Total counts\n");
+	builtin_print("Total RUN: "); print_num(total_run);
+	builtin_print("Total INDEX: "); print_num(total_index);
+	builtin_print("Total DIFF: "); print_num(total_diff);
+	builtin_print("Total LUMA: "); print_num(total_luma);
+	builtin_print("Total RGB: "); print_num(total_rgb);
+	builtin_print("Total RGBA: "); print_num(total_rgba);
 }
 
 fn make_color(r: u8, g: u8, b: u8): i32 {
@@ -267,26 +247,25 @@ fn make_color(r: u8, g: u8, b: u8): i32 {
 fn main(): i32 {
 	let width: i32 = 256;
 	let height: i32 = 256;
-	print("welcome!\n");
-	let canvas: i32* = alloc(width * height * 4) as i32*;
+	builtin_print("welcome!\n");
+	let canvas: i32* = builtin_malloc((width * height * 4) as uptr) as i32*;
 
 	let y: i32 = 0;
 	while y < height {
 		let x: i32 = 0;
 		while x < width {
 			let i: i32 = y * width + x;
-			// *(canvas + i) = make_color(((x - 1) * (x - 1) - y * y) as u8, (x * x - y * y) as u8, ((x + 1) * (x + 1) - (y + 1) * (y + 1)) as u8);
-			*(canvas + i) = make_color(((width - x) * (width - x) / (y + 1)) as u8, (x * x / (y + 1)) as u8, (x - y + 1) as u8);
-			// *(canvas + i) = make_color(0, 0, (((width - x - 1) - y) / (x - y + 1)) as u8);
-			// *(canvas + i) = make_color(y as u8, y as u8, y as u8);
+			// canvas[i] = make_color(((x - 1) * (x - 1) - y * y) as u8, (x * x - y * y) as u8, ((x + 1) * (x + 1) - (y + 1) * (y + 1)) as u8);
+			canvas[i] = make_color(((width - x) * (width - x) / (y + 1)) as u8, (x * x / (y + 1)) as u8, (x - y + 1) as u8);
+			// canvas[i] = make_color(y as u8, y as u8, y as u8);
 			x = x + 1;
 		}
 		y = y + 1;
 	}
 
-	print("going to save!\n");
+	builtin_print("going to save!\n");
 	save_image("./image.qoi", canvas, width, height);
-	print("saved\n");
+	builtin_print("saved\n");
 
 	return 0;
 }
