@@ -32,6 +32,7 @@ pub fn run<S: AsRef<std::path::Path> + Into<PathBuf> + Clone>(
 
 	if dump_ast {
 		crate::dump::dump(ast);
+		return;
 	}
 	let compiled_asts: Vec<_> = asts
 		.into_iter()
@@ -90,19 +91,18 @@ pub fn run<S: AsRef<std::path::Path> + Into<PathBuf> + Clone>(
 	if !quiet {
 		println!("Executing command: {:?}", command);
 	}
-	let status;
-	if quiet {
-		status = command
+	let status = if quiet {
+		command
 			.output()
 			.expect("Failed to run command (is clang missing?)")
-			.status;
+			.status
 	} else {
-		status = command
+		command
 			.spawn()
 			.expect("Failed to run command (is clang missing?)")
 			.wait()
-			.expect("Failed to wait for process");
-	}
+			.expect("Failed to wait for process")
+	};
 	if !status.success() {
 		eprintln!("Failed to compile");
 	}

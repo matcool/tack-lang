@@ -10,7 +10,7 @@ use tack::run::run;
 
 fn run_test(path: &Path, binary_path: &Path) {
 	let mut expected_code = None;
-	for line in BufReader::new(File::open(&path).unwrap()).lines() {
+	for line in BufReader::new(File::open(path).unwrap()).lines() {
 		let line = line.unwrap();
 		let Some((_, comment)) = line.split_once("// ") else {
 			break;
@@ -33,12 +33,9 @@ fn run_test(path: &Path, binary_path: &Path) {
 		true,
 	);
 
-	let out = Command::new(std::path::absolute(&binary_path).unwrap())
+	let out = Command::new(std::path::absolute(binary_path).unwrap())
 		.output()
-		.expect(&format!(
-			"Failed to run test {:?}",
-			path.file_name().unwrap()
-		));
+		.unwrap_or_else(|_| panic!("Failed to run test {:?}", path.file_name().unwrap()));
 	let code = out.status.code().unwrap();
 	print!("returned code {code} ");
 	if !out.stdout.is_empty() {

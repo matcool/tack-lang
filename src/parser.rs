@@ -64,27 +64,26 @@ pub enum ExpressionKind {
 	BoolLiteral(bool),
 	Declaration(Variable),
 	Identifier(String),
-	Operator(Operator),
-	Call(String),
-	Cast(Type),
+	BinaryOperator(Operator, Box<Expression>, Box<Expression>),
+	UnaryOperator(Operator, Box<Expression>),
+	Call(String, Vec<Expression>),
+	Cast(Type, Box<Expression>),
 	StringLiteral(String),
-	ArrayLiteral,
-	ArrayIndex,
-	StructAccess(String),
+	ArrayLiteral(Vec<Expression>),
+	ArrayIndex(Box<Expression>, Box<Expression>),
+	StructAccess(Box<Expression>, String),
 }
 
 #[derive(Debug)]
 pub struct Expression {
 	pub kind: ExpressionKind,
-	pub children: Vec<Expression>,
 	pub span: Span,
 }
 
 impl Expression {
-	pub fn new(kind: ExpressionKind, children: Vec<Expression>) -> Expression {
+	pub fn new(kind: ExpressionKind) -> Expression {
 		Expression {
 			kind,
-			children,
 			span: Default::default(),
 		}
 	}
@@ -92,28 +91,27 @@ impl Expression {
 
 #[derive(Debug)]
 pub enum StatementKind {
-	Expression,
-	Return,
-	If(Scope, Option<Box<Statement>>),
-	While(Scope),
+	Expression(Expression),
+	Return(Option<Expression>),
+	If(Scope, Expression, Option<Box<Statement>>),
+	While(Scope, Expression),
 	Block(Scope),
 }
 
 #[derive(Debug)]
 pub struct Statement {
 	pub kind: StatementKind,
-	pub children: Vec<Expression>,
 }
 
 impl Statement {
-	fn new(kind: StatementKind, children: Vec<Expression>) -> Statement {
-		Statement { kind, children }
+	fn new(kind: StatementKind) -> Statement {
+		Statement { kind }
 	}
 
 	fn requires_semicolon(&self) -> bool {
 		!matches!(
 			&self.kind,
-			StatementKind::If(_, _) | StatementKind::While(_) | StatementKind::Block(_)
+			StatementKind::If(_, _, _) | StatementKind::While(_, _) | StatementKind::Block(_)
 		)
 	}
 }
@@ -376,16 +374,18 @@ impl Parser {
 		match token.kind {
 			TokenKind::Keyword(Keyword::Return) => {
 				self.next()?; // Return
-				Ok(Statement::new(
-					StatementKind::Return,
-					vec![self.parse_expression()?],
-				))
+				let expr = if matches!(self.peek()?.kind, TokenKind::Semicolon) {
+					None
+				} else {
+					Some(self.parse_expression()?)
+				};
+				Ok(Statement::new(StatementKind::Return(expr)))
 			}
 			TokenKind::Keyword(Keyword::While) => {
 				self.next()?; // While
 				let condition = self.parse_expression()?;
 				let scope = self.parse_scope()?;
-				Ok(Statement::new(StatementKind::While(scope), vec![condition]))
+				Ok(Statement::new(StatementKind::While(scope, condition)))
 			}
 			TokenKind::Keyword(Keyword::If) => {
 				self.next()?; // If
@@ -403,17 +403,13 @@ impl Parser {
 						}
 					}
 				}
-				let stmt = Statement::new(StatementKind::If(scope, else_branch), vec![condition]);
+				let stmt = Statement::new(StatementKind::If(scope, condition, else_branch));
 				Ok(stmt)
 			}
-			TokenKind::LeftBrace => Ok(Statement::new(
-				StatementKind::Block(self.parse_scope()?),
-				vec![],
-			)),
-			_ => Ok(Statement::new(
-				StatementKind::Expression,
-				vec![self.parse_expression()?],
-			)),
+			TokenKind::LeftBrace => Ok(Statement::new(StatementKind::Block(self.parse_scope()?))),
+			_ => Ok(Statement::new(StatementKind::Expression(
+				self.parse_expression()?,
+			))),
 		}
 	}
 
@@ -444,33 +440,37 @@ impl Parser {
 					prec -= 1;
 				}
 				let right = self.parse_expression_precedence(prec)?;
-				Expression::new(ExpressionKind::Operator(op), vec![left, right])
+				Expression::new(ExpressionKind::BinaryOperator(
+					op,
+					left.into(),
+					right.into(),
+				))
 			}
 			// Postfix operators
 			TokenKind::Operator(Operator::As) => {
 				let ty = self.parse_type()?;
-				Expression::new(ExpressionKind::Cast(ty), vec![left])
+				Expression::new(ExpressionKind::Cast(ty, left.into()))
 			}
 			TokenKind::Operator(Operator::Dot) => {
 				let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
-				Expression::new(ExpressionKind::StructAccess(name), vec![left])
+				Expression::new(ExpressionKind::StructAccess(left.into(), name))
 			}
 			TokenKind::LeftParen => {
 				let name = match left.kind {
 					ExpressionKind::Identifier(name) => name,
 					_ => unimplemented!("no dynamic calls yet"),
 				};
-				let mut exp = Expression::new(ExpressionKind::Call(name), vec![]);
+				let mut args = Vec::new();
 				self.parse_comma_list(|selfish: &mut Self| {
-					exp.children.push(selfish.parse_expression()?);
+					args.push(selfish.parse_expression()?);
 					Ok(())
 				})?;
-				exp
+				Expression::new(ExpressionKind::Call(name, args))
 			}
 			TokenKind::LeftBracket => {
 				let index_exp = self.parse_expression()?;
 				expect_token!(self.next()?, TokenKind::RightBracket)?;
-				Expression::new(ExpressionKind::ArrayIndex, vec![left, index_exp])
+				Expression::new(ExpressionKind::ArrayIndex(left.into(), index_exp.into()))
 			}
 			_ => unimplemented!("Unhandled infix token: {:?}", token),
 		})
@@ -478,17 +478,13 @@ impl Parser {
 
 	fn parse_expression_prefix(&mut self, token: Token) -> Result<Expression, ParserError> {
 		Ok(match token.kind {
-			TokenKind::Identifier(name) => {
-				Expression::new(ExpressionKind::Identifier(name), vec![])
-			}
-			TokenKind::Number(number) => {
-				Expression::new(ExpressionKind::NumberLiteral(number), vec![])
-			}
+			TokenKind::Identifier(name) => Expression::new(ExpressionKind::Identifier(name)),
+			TokenKind::Number(number) => Expression::new(ExpressionKind::NumberLiteral(number)),
 			TokenKind::Keyword(value @ (Keyword::True | Keyword::False)) => {
-				Expression::new(ExpressionKind::BoolLiteral(value == Keyword::True), vec![])
+				Expression::new(ExpressionKind::BoolLiteral(value == Keyword::True))
 			}
 			TokenKind::StringLiteral(content) => {
-				Expression::new(ExpressionKind::StringLiteral(content), vec![])
+				Expression::new(ExpressionKind::StringLiteral(content))
 			}
 			TokenKind::LeftParen => {
 				let exp = self.parse_expression()?;
@@ -505,7 +501,7 @@ impl Parser {
 					Operator::BitAnd => Operator::Reference,
 					op => op,
 				};
-				Expression::new(ExpressionKind::Operator(op), vec![child])
+				Expression::new(ExpressionKind::UnaryOperator(op, child.into()))
 			}
 			TokenKind::LeftBracket => {
 				let mut arr = Vec::new();
@@ -519,11 +515,11 @@ impl Parser {
 					arr.push(exp);
 				}
 				self.next()?;
-				Expression::new(ExpressionKind::ArrayLiteral, arr)
+				Expression::new(ExpressionKind::ArrayLiteral(arr))
 			}
 			TokenKind::Keyword(Keyword::Let) => {
 				let var = self.parse_var_decl()?;
-				Expression::new(ExpressionKind::Declaration(var), vec![])
+				Expression::new(ExpressionKind::Declaration(var))
 			}
 			_ => todo!("Unhandled prefix token: {:?}", token),
 		})

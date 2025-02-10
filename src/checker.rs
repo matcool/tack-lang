@@ -4,7 +4,7 @@ use crate::{
 	ast::{
 		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind,
 		StructType, Type, TypeRef, Variable, AST, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_I32,
-		BUILTIN_TYPE_INT_LITERAL, BUILTIN_TYPE_STR, BUILTIN_TYPE_UPTR, BUILTIN_TYPE_VOID,
+		BUILTIN_TYPE_INT_LITERAL, BUILTIN_TYPE_STR, BUILTIN_TYPE_VOID,
 	},
 	lexer::Operator,
 	parser::{self, Parser},
@@ -156,26 +156,40 @@ impl FunctionTypeChecker<'_> {
 
 	fn check_statement(
 		&mut self,
-		mut parsed: parser::Statement,
+		parsed: parser::Statement,
 	) -> Result<Statement, TypeCheckerError> {
 		Ok(match parsed.kind {
-			parser::StatementKind::Expression => {
-				let expr = self.check_expression(parsed.children.remove(0))?;
-				Statement::new(StatementKind::Expression, vec![expr])
+			parser::StatementKind::Expression(expr) => {
+				let expr = self.check_expression(expr)?;
+				Statement::new(StatementKind::Expression(expr))
 			}
-			parser::StatementKind::Return => {
-				let mut expr = self.check_expression(parsed.children.remove(0))?;
-				let ty = self.promote_int_literal_into(&mut expr, self.function.return_type);
-				if ty != self.function.return_type {
-					return Err(TypeCheckerError::TypeMismatch(
-						"between return type and the expression".into(),
-					));
+			parser::StatementKind::Return(expr_opt) => {
+				if self.function.return_type == BUILTIN_TYPE_VOID {
+					if expr_opt.is_some() {
+						// TODO: this is a terrible error
+						return Err(TypeCheckerError::InvalidOperand);
+					}
+					Statement::new(StatementKind::Return(None))
+				} else {
+					let Some(expr) = expr_opt else {
+						return Err(TypeCheckerError::TypeMismatch(format!(
+							"Expected return type {}, got void",
+							self.format_type(self.function.return_type)
+						)));
+					};
+					let mut expr = self.check_expression(expr)?;
+					let ty = self.promote_int_literal_into(&mut expr, self.function.return_type);
+					if ty != self.function.return_type {
+						return Err(TypeCheckerError::TypeMismatch(
+							"between return type and the expression".into(),
+						));
+					}
+					expr.cast_if_reference();
+					Statement::new(StatementKind::Return(Some(expr)))
 				}
-				expr.cast_if_reference();
-				Statement::new(StatementKind::Return, vec![expr])
 			}
-			parser::StatementKind::If(parsed_scope, else_stmt) => {
-				let mut condition = self.check_expression(parsed.children.remove(0))?;
+			parser::StatementKind::If(parsed_scope, condition, else_stmt) => {
+				let mut condition = self.check_expression(condition)?;
 				condition.cast_if_reference();
 				if condition.value_type != BUILTIN_TYPE_BOOL {
 					return Err(TypeCheckerError::TypeMismatch(
@@ -188,14 +202,14 @@ impl FunctionTypeChecker<'_> {
 					.transpose()?
 					.map(Box::new);
 
-				Statement::new(StatementKind::If(if_scope, else_stmt), vec![condition])
+				Statement::new(StatementKind::If(if_scope, condition, else_stmt))
 			}
 			parser::StatementKind::Block(parsed_scope) => {
 				let scope = self.check_scope(parsed_scope)?;
-				Statement::new(StatementKind::Block(scope), vec![])
+				Statement::new(StatementKind::Block(scope))
 			}
-			parser::StatementKind::While(parsed_scope) => {
-				let mut condition = self.check_expression(parsed.children.remove(0))?;
+			parser::StatementKind::While(parsed_scope, condition) => {
+				let mut condition = self.check_expression(condition)?;
 				condition.cast_if_reference();
 				if condition.value_type != BUILTIN_TYPE_BOOL {
 					return Err(TypeCheckerError::TypeMismatch(
@@ -203,7 +217,7 @@ impl FunctionTypeChecker<'_> {
 					));
 				}
 				let scope = self.check_scope(parsed_scope)?;
-				Statement::new(StatementKind::While(scope), vec![condition])
+				Statement::new(StatementKind::While(scope, condition))
 			}
 		})
 	}
@@ -213,60 +227,64 @@ impl FunctionTypeChecker<'_> {
 		parsed: parser::Expression,
 	) -> Result<Expression, TypeCheckerError> {
 		Ok(match parsed.kind {
-			parser::ExpressionKind::NumberLiteral(_) => {
-				self.check_expression_into(parsed, BUILTIN_TYPE_INT_LITERAL)?
-			}
-			parser::ExpressionKind::BoolLiteral(_) => {
-				self.check_expression_into(parsed, BUILTIN_TYPE_BOOL)?
-			}
-			parser::ExpressionKind::Operator(Operator::Assign) => {
-				let mut iter = parsed.children.into_iter();
-				let lhs = iter.next().unwrap();
-				let rhs = iter.next().unwrap();
+			parser::ExpressionKind::NumberLiteral(value) => Expression::new_spanned(
+				BUILTIN_TYPE_INT_LITERAL,
+				ExpressionKind::NumberLiteral(value),
+				parsed.span,
+			),
+			parser::ExpressionKind::BoolLiteral(value) => Expression::new_spanned(
+				BUILTIN_TYPE_BOOL,
+				ExpressionKind::BoolLiteral(value),
+				parsed.span,
+			),
+			parser::ExpressionKind::StringLiteral(value) => Expression::new_spanned(
+				BUILTIN_TYPE_STR,
+				ExpressionKind::StringLiteral(value),
+				parsed.span,
+			),
+			parser::ExpressionKind::BinaryOperator(Operator::Assign, left, right) => {
 				// check rhs first
-				let mut rhs = self.check_expression(rhs)?;
-				let lhs = self.check_expression(lhs)?;
-				rhs.cast_if_reference();
-				let mut expr = Expression::new_spanned(
-					BUILTIN_TYPE_VOID,
-					ExpressionKind::Operator(Operator::Assign),
-					vec![lhs, rhs],
-					parsed.span,
-				);
+				let mut right = self.check_expression(*right)?;
+				let left = self.check_expression(*left)?;
+				right.cast_if_reference();
 
-				let lhs = expr.children[0].value_type;
-				if !lhs.reference {
+				let left_ty = left.value_type;
+				if !left_ty.reference {
 					return Err(TypeCheckerError::TypeMismatch(
 						"Left hand side of assigment must be reference".into(),
 					));
 				}
 
 				// Promote rhs into lhs if possible
-				let rhs = self.promote_int_literal_into(&mut expr.children[1], lhs);
+				let right_ty = self.promote_int_literal_into(&mut right, left_ty);
 
-				if lhs != rhs {
+				if left_ty != right_ty {
 					return Err(TypeCheckerError::TypeMismatch(format!(
 						"{} and {} don't match {:?}",
-						self.format_type(lhs),
-						self.format_type(rhs),
-						expr.span,
+						self.format_type(left_ty),
+						self.format_type(right_ty),
+						parsed.span,
 					)));
 				}
 
-				expr
+				Expression::new_spanned(
+					BUILTIN_TYPE_VOID,
+					ExpressionKind::BinaryOperator(Operator::Assign, left.into(), right.into()),
+					parsed.span,
+				)
 			}
-			parser::ExpressionKind::Operator(op) if op.is_binary() => {
-				let mut expr = self.check_expression_into(parsed, TypeRef::unknown())?;
-				let lhs = expr.children[0].value_type;
+			parser::ExpressionKind::BinaryOperator(op, left, right) => {
+				let mut left = self.check_expression(*left)?;
+				let mut right = self.check_expression(*right)?;
 
 				// Promote rhs into lhs if possible
-				let rhs = self.promote_int_literal_into(&mut expr.children[1], lhs);
+				let right_ty = self.promote_int_literal_into(&mut right, left.value_type);
 				// Otherwise, promote lhs into rhs
-				let lhs = self.promote_int_literal_into(&mut expr.children[0], rhs);
+				let left_ty = self.promote_int_literal_into(&mut left, right_ty);
 
 				// Boolean operators
 				if matches!(op, Operator::And | Operator::Or)
-					&& (lhs != BUILTIN_TYPE_BOOL || rhs != BUILTIN_TYPE_BOOL)
+					&& (left_ty != BUILTIN_TYPE_BOOL || right_ty != BUILTIN_TYPE_BOOL)
 				{
 					return Err(TypeCheckerError::TypeMismatch(
 						"Operands must be bool".into(),
@@ -274,25 +292,27 @@ impl FunctionTypeChecker<'_> {
 				}
 
 				// Pointer arithmetic
-				if self.ast.is_pointer(lhs) {
-					let rhs =
-						self.promote_int_literal_into(&mut expr.children[1], BUILTIN_TYPE_I32);
+				if self.ast.is_pointer(left_ty) {
+					let rhs = self.promote_int_literal_into(&mut right, BUILTIN_TYPE_I32);
 					if !matches!(op, Operator::Add | Operator::Sub) || rhs != BUILTIN_TYPE_I32 {
 						return Err(TypeCheckerError::TypeMismatch(
 							"Pointers only support addition and subtraction with i32".into(),
 						));
 					}
-					expr.children[0].cast_if_reference();
-					expr.children[1].cast_if_reference();
-					expr.value_type = lhs.remove_reference();
-					return Ok(expr);
+					left.cast_if_reference();
+					right.cast_if_reference();
+					return Ok(Expression::new_spanned(
+						left_ty.remove_reference(),
+						ExpressionKind::BinaryOperator(op, left.into(), right.into()),
+						parsed.span,
+					));
 				}
 
-				if lhs != rhs {
+				if left_ty != right_ty {
 					return Err(TypeCheckerError::TypeMismatch(format!(
 						"Operand types {} and {} don't match",
-						self.format_type(lhs),
-						self.format_type(rhs)
+						self.format_type(left_ty),
+						self.format_type(right_ty)
 					)));
 				}
 
@@ -300,7 +320,7 @@ impl FunctionTypeChecker<'_> {
 					op,
 					Operator::Add | Operator::Sub | Operator::Divide | Operator::Multiply
 				) {
-					let ty = self.ast.get_type(lhs);
+					let ty = self.ast.get_type(left_ty);
 					if !matches!(
 						ty,
 						Type::BuiltIn(
@@ -311,35 +331,42 @@ impl FunctionTypeChecker<'_> {
 					) {
 						return Err(TypeCheckerError::TypeMismatch(format!(
 							"Arithmetic on non integer type ({})",
-							self.format_type(lhs)
+							self.format_type(left_ty)
 						)));
 					}
 				}
 
-				expr.children[0].cast_if_reference();
-				expr.children[1].cast_if_reference();
+				left.cast_if_reference();
+				right.cast_if_reference();
 
-				expr.value_type = match op {
+				let ty = match op {
 					Operator::Equals
 					| Operator::NotEquals
 					| Operator::GreaterThan
 					| Operator::GreaterThanEq
 					| Operator::LessThan
 					| Operator::LessThanEq => BUILTIN_TYPE_BOOL,
-					_ => lhs.remove_reference(),
+					_ => left_ty.remove_reference(),
 				};
-				expr
+				Expression::new_spanned(
+					ty,
+					ExpressionKind::BinaryOperator(op, left.into(), right.into()),
+					parsed.span,
+				)
 			}
-			parser::ExpressionKind::Operator(Operator::Negate) => {
-				let mut expr = self.check_expression_into(parsed, TypeRef::unknown())?;
-				expr.value_type = expr.children[0].value_type;
-				if expr.value_type != BUILTIN_TYPE_INT_LITERAL
-					&& !self.ast.is_integer(expr.value_type)
+			parser::ExpressionKind::UnaryOperator(Operator::Negate, child) => {
+				let mut child = self.check_expression(*child)?;
+				if child.value_type != BUILTIN_TYPE_INT_LITERAL
+					&& !self.ast.is_integer(child.value_type)
 				{
-					println!("{}", self.format_type(expr.value_type));
 					return Err(TypeCheckerError::InvalidOperand);
 				}
-				expr
+				child.cast_if_reference();
+				Expression::new_spanned(
+					child.value_type,
+					ExpressionKind::UnaryOperator(Operator::Negate, child.into()),
+					parsed.span,
+				)
 			}
 			parser::ExpressionKind::Declaration(parsed_var) => {
 				let var = self
@@ -348,7 +375,6 @@ impl FunctionTypeChecker<'_> {
 				Expression::new_spanned(
 					var.ty.add_reference(),
 					ExpressionKind::Declaration(var),
-					vec![],
 					parsed.span,
 				)
 			}
@@ -359,15 +385,11 @@ impl FunctionTypeChecker<'_> {
 				Expression::new_spanned(
 					var.ty.add_reference(),
 					ExpressionKind::Identifier(var),
-					vec![],
 					parsed.span,
 				)
 			}
-			parser::ExpressionKind::StringLiteral(_) => {
-				self.check_expression_into(parsed, BUILTIN_TYPE_STR)?
-			}
-			parser::ExpressionKind::StructAccess(field_name) => {
-				let mut struct_expr = self.check_first_child(parsed.children)?;
+			parser::ExpressionKind::StructAccess(struct_expr, field_name) => {
+				let mut struct_expr = self.check_expression(*struct_expr)?;
 				let struct_ty: Option<TypeRef>;
 				match self.ast.get_type(struct_expr.value_type) {
 					Type::Struct(_) => {
@@ -391,8 +413,7 @@ impl FunctionTypeChecker<'_> {
 					struct_expr.cast_if_reference();
 					struct_expr = Expression::new(
 						struct_ty.add_reference(),
-						ExpressionKind::Operator(Operator::Dereference),
-						vec![struct_expr],
+						ExpressionKind::UnaryOperator(Operator::Dereference, struct_expr.into()),
 					);
 				}
 				let Type::Struct(struct_ty) = self.ast.get_type(struct_ty) else {
@@ -407,8 +428,7 @@ impl FunctionTypeChecker<'_> {
 
 					Expression::new_spanned(
 						ty,
-						ExpressionKind::StructAccess(field.name.clone()),
-						vec![struct_expr],
+						ExpressionKind::StructAccess(struct_expr.into(), field_name),
 						parsed.span,
 					)
 				} else {
@@ -418,10 +438,14 @@ impl FunctionTypeChecker<'_> {
 					)));
 				}
 			}
-			parser::ExpressionKind::ArrayLiteral => {
-				let mut expr = self.check_expression_into(parsed, TypeRef::unknown())?;
+			parser::ExpressionKind::ArrayLiteral(values) => {
+				let mut values = values
+					.into_iter()
+					.map(|e| self.check_expression(e))
+					.collect::<Result<Vec<_>, _>>()?;
+
 				let mut inner_type = TypeRef::unknown();
-				for child in &mut expr.children {
+				for child in &mut values {
 					child.cast_if_reference();
 					if inner_type.is_unknown() {
 						inner_type = child.value_type;
@@ -441,28 +465,26 @@ impl FunctionTypeChecker<'_> {
 						"Could not figure out type of array".into(),
 					));
 				}
-				expr.value_type = self
+				let ty = self
 					.ast
-					.find_type_or_add(Type::Array(inner_type, expr.children.len()));
-				expr
+					.find_type_or_add(Type::Array(inner_type, values.len()));
+				Expression::new_spanned(ty, ExpressionKind::ArrayLiteral(values), parsed.span)
 			}
-			parser::ExpressionKind::ArrayIndex => {
-				let mut expr = self.check_expression_into(parsed, TypeRef::unknown())?;
-
-				let index_expr = &mut expr.children[1];
+			parser::ExpressionKind::ArrayIndex(arr_expr, index_expr) => {
+				let mut index_expr = self.check_expression(*index_expr)?;
 				index_expr.cast_if_reference();
-				let index_type = self.promote_int_literal_into(index_expr, BUILTIN_TYPE_I32);
+				let index_type = self.promote_int_literal_into(&mut index_expr, BUILTIN_TYPE_I32);
 				if !self.ast.is_integer(index_type) {
 					return Err(TypeCheckerError::TypeMismatch(
 						"Expected integer type when indexing array".into(),
 					));
 				}
 
-				let arr_expr = &mut expr.children[0];
+				let mut arr_expr = self.check_expression(*arr_expr)?;
 				arr_expr.cast_if_reference();
 				let arr_type = arr_expr.value_type;
 
-				expr.value_type = if let Type::Pointer(inner) = self.ast.get_type(arr_type) {
+				let ty = if let Type::Pointer(inner) = self.ast.get_type(arr_type) {
 					inner.add_reference()
 				} else if let Type::Array(inner, _) = self.ast.get_type(arr_type) {
 					inner.add_reference()
@@ -472,11 +494,15 @@ impl FunctionTypeChecker<'_> {
 					));
 				};
 
-				expr
+				Expression::new_spanned(
+					ty,
+					ExpressionKind::ArrayIndex(arr_expr.into(), index_expr.into()),
+					parsed.span,
+				)
 			}
-			parser::ExpressionKind::Cast(into) => {
+			parser::ExpressionKind::Cast(into, child) => {
 				let into = self.ast.check_parsed_type(into)?;
-				let mut child = self.check_first_child(parsed.children)?;
+				let mut child = self.check_expression(*child)?;
 				let from = child.value_type;
 
 				match (self.ast.get_type(from), self.ast.get_type(into)) {
@@ -509,10 +535,10 @@ impl FunctionTypeChecker<'_> {
 				}
 				child.cast_if_reference();
 
-				Expression::new_spanned(into, ExpressionKind::Cast, vec![child], parsed.span)
+				Expression::new_spanned(into, ExpressionKind::Cast(child.into()), parsed.span)
 			}
-			parser::ExpressionKind::Operator(Operator::Reference) => {
-				let child = self.check_first_child(parsed.children)?;
+			parser::ExpressionKind::UnaryOperator(Operator::Reference, child) => {
+				let child = self.check_expression(*child)?;
 				if !child.value_type.reference {
 					return Err(TypeCheckerError::InvalidReference);
 				}
@@ -521,46 +547,46 @@ impl FunctionTypeChecker<'_> {
 					.find_type_or_add(Type::Pointer(child.value_type.remove_reference()));
 				Expression::new_spanned(
 					ty,
-					ExpressionKind::Operator(Operator::Reference),
-					vec![child],
+					ExpressionKind::UnaryOperator(Operator::Reference, child.into()),
 					parsed.span,
 				)
 			}
-			parser::ExpressionKind::Operator(Operator::Dereference) => {
-				let mut child = self.check_first_child(parsed.children)?;
+			parser::ExpressionKind::UnaryOperator(Operator::Dereference, child) => {
+				let mut child = self.check_expression(*child)?;
 				let Type::Pointer(inner) = self.ast.get_type(child.value_type) else {
 					return Err(TypeCheckerError::InvalidDereference);
 				};
 				child.cast_if_reference();
 				Expression::new_spanned(
 					inner.add_reference(),
-					ExpressionKind::Operator(Operator::Dereference),
-					vec![child],
+					ExpressionKind::UnaryOperator(Operator::Dereference, child.into()),
 					parsed.span,
 				)
 			}
-			parser::ExpressionKind::Call(ref func_name) => {
+			parser::ExpressionKind::Call(func_name, args) => {
+				let mut call_args = args
+					.into_iter()
+					.map(|e| self.check_expression(e))
+					.collect::<Result<Vec<_>, _>>()?;
 				if let Some(calling_function) = self
 					.ast
 					.functions
 					.iter()
-					.find(|f| &f.name == func_name)
+					.find(|f| f.name == func_name)
 					.or_else(|| {
-						if func_name == &self.function.name {
+						if func_name == self.function.name {
 							Some(self.function)
 						} else {
 							None
 						}
 					}) {
 					let func_arguments = calling_function.arguments.clone();
-					let mut expr =
-						self.check_expression_into(parsed, calling_function.return_type)?;
 
-					if expr.children.len() != func_arguments.len() {
+					if call_args.len() != func_arguments.len() {
 						return Err(TypeCheckerError::ArgumentCountMismatch);
 					}
 
-					for (arg, exp) in func_arguments.iter().zip(expr.children.iter_mut()) {
+					for (arg, exp) in func_arguments.iter().zip(call_args.iter_mut()) {
 						exp.cast_if_reference();
 						let ty = self.promote_int_literal_into(exp, arg.ty);
 						if ty != arg.ty {
@@ -572,55 +598,17 @@ impl FunctionTypeChecker<'_> {
 						}
 					}
 
-					expr
-				} else if func_name == "syscall" {
-					let mut expr = self.check_expression_into(parsed, BUILTIN_TYPE_UPTR)?;
-
-					for exp in expr.children.iter_mut() {
-						exp.cast_if_reference();
-						self.promote_int_literal_into(exp, BUILTIN_TYPE_UPTR);
-					}
-
-					expr
+					Expression::new_spanned(
+						calling_function.return_type,
+						ExpressionKind::Call(func_name, call_args),
+						parsed.span,
+					)
 				} else {
 					return Err(TypeCheckerError::FunctionNotFound(func_name.clone()));
 				}
 			}
 			_ => todo!("{:?}", parsed),
 		})
-	}
-
-	/// Checks an expression into a specified type,
-	/// and calls `check_expression` on its children.
-	fn check_expression_into(
-		&mut self,
-		parsed: parser::Expression,
-		ty: TypeRef,
-	) -> Result<Expression, TypeCheckerError> {
-		let children: Result<_, TypeCheckerError> = parsed
-			.children
-			.into_iter()
-			.map(|c| self.check_expression(c))
-			.collect();
-		let children = children?;
-		Ok(Expression::new_spanned(
-			ty,
-			parsed.kind.try_into().unwrap(),
-			children,
-			parsed.span,
-		))
-	}
-
-	fn check_first_child(
-		&mut self,
-		children: Vec<parser::Expression>,
-	) -> Result<Expression, TypeCheckerError> {
-		let children: Result<_, TypeCheckerError> = children
-			.into_iter()
-			.map(|c| self.check_expression(c))
-			.collect();
-		let children: Vec<_> = children?;
-		Ok(children.into_iter().next().unwrap())
 	}
 
 	fn promote_int_literal_into(&self, expression: &mut Expression, type_ref: TypeRef) -> TypeRef {
@@ -630,10 +618,14 @@ impl FunctionTypeChecker<'_> {
 		let target_type = self.ast.get_type(type_ref);
 		if let Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8 | BuiltInType::UPtr) = target_type {
 			expression.value_type = type_ref.remove_reference();
-			if let ExpressionKind::Operator(_) = expression.kind {
-				for child in &mut expression.children {
-					self.promote_int_literal_into(child, type_ref);
-				}
+			// TODO: children trait or something
+			if let ExpressionKind::BinaryOperator(_, left, right) = &mut expression.kind {
+				self.promote_int_literal_into(left, type_ref);
+				self.promote_int_literal_into(right, type_ref);
+			} else if let ExpressionKind::UnaryOperator(_, left) = &mut expression.kind {
+				self.promote_int_literal_into(left, type_ref);
+			} else {
+				// todo!("Tried to promote something else {}", expression.kind);
 			}
 		}
 		expression.value_type

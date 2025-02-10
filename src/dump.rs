@@ -28,15 +28,20 @@ fn dump_scope(ast: &AST, scope: &Scope, indent: &str) {
 
 fn dump_statement(ast: &AST, stmt: &Statement, indent: &str) {
 	match &stmt.kind {
-		StatementKind::Expression => {
-			let expr = stmt.children.first().unwrap();
+		StatementKind::Expression(expr) => {
 			dump_expression(ast, expr, indent);
 		}
-		StatementKind::If(body, else_stmt) => {
+		StatementKind::Return(expr) => {
+			println!("{indent}Statement: While");
+			if let Some(expr) = expr {
+				dump_expression(ast, expr, &format!("  {indent}"));
+			}
+		}
+		StatementKind::If(body, condition, else_stmt) => {
 			println!("{indent}Statement: If");
 			let indent = format!("  {indent}");
 			println!("{indent}Condition:");
-			dump_expression(ast, &stmt.children[0], &format!("  {indent}"));
+			dump_expression(ast, condition, &format!("  {indent}"));
 			println!("{indent}Body:");
 			dump_scope(ast, body, &format!("  {indent}"));
 			if let Some(else_stmt) = else_stmt {
@@ -44,11 +49,11 @@ fn dump_statement(ast: &AST, stmt: &Statement, indent: &str) {
 				dump_statement(ast, else_stmt, &format!("  {indent}"));
 			}
 		}
-		StatementKind::While(body) => {
+		StatementKind::While(body, condition) => {
 			println!("{indent}Statement: While");
 			let indent = format!("  {indent}");
 			println!("{indent}Condition:");
-			dump_expression(ast, &stmt.children[0], &format!("  {indent}"));
+			dump_expression(ast, condition, &format!("  {indent}"));
 			println!("{indent}Body:");
 			dump_scope(ast, body, &format!("  {indent}"));
 		}
@@ -56,28 +61,7 @@ fn dump_statement(ast: &AST, stmt: &Statement, indent: &str) {
 			println!("{indent}Scope:");
 			dump_scope(ast, scope, &format!("  {indent}"));
 		}
-		_ => {
-			let name = format!("{:?}", stmt.kind);
-			println!("{indent}Statement: {name}");
-			for expr in &stmt.children {
-				dump_expression(ast, expr, &format!("  {indent}"));
-			}
-		}
 	}
-	// let mut new_indent = format!("  {indent}");
-	// let name = match &stmt.kind {
-	// 	StatementKind::Expression => {
-	// 		let expr = stmt.children.first().unwrap();
-	// 		dump_expression(ast, expr, indent);
-	// 		return;
-	// 	}
-	// 	StatementKind::If(, ) => {}
-	// 	k => format!("{:?}", k),
-	// };
-	// println!("{indent}Statement: {name}");
-	// for expr in &stmt.children {
-	// 	dump_expression(ast, expr, &new_indent);
-	// }
 }
 
 fn dump_expression(ast: &AST, expr: &Expression, indent: &str) {
@@ -98,13 +82,17 @@ fn dump_expression(ast: &AST, expr: &Expression, indent: &str) {
 				var.ty.formatted(ast)
 			)
 		}
-		k => format!("{:?}", k),
+		ExpressionKind::BinaryOperator(op, _, _) => format!("BinaryOperator({op:?})"),
+		ExpressionKind::UnaryOperator(op, _) => format!("UnaryOperator({op:?})"),
+		ExpressionKind::Call(name, _) => format!("Call({name})"),
+		ExpressionKind::StructAccess(_, name) => format!("StructAccess({name})"),
+		k => format!("{}", k),
 	};
 	println!(
 		"{indent}Expression: {name} -> {}",
 		expr.value_type.formatted(ast)
 	);
-	for expr in &expr.children {
+	for expr in expr.list_children() {
 		dump_expression(ast, expr, &format!("  {indent}"));
 	}
 }

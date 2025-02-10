@@ -6,11 +6,9 @@ use std::{
 };
 
 use itertools::Itertools;
+use strum_macros::Display;
 
-use crate::{
-	lexer::{Operator, Span},
-	parser,
-};
+use crate::lexer::{Operator, Span};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum BuiltInType {
@@ -113,88 +111,72 @@ pub struct Variable {
 	pub ty: TypeRef,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
 pub enum ExpressionKind {
 	NumberLiteral(i64),
 	BoolLiteral(bool),
+	StringLiteral(String),
 	Declaration(Variable),
 	Identifier(Variable),
-	Operator(Operator),
+	BinaryOperator(Operator, Box<Expression>, Box<Expression>),
+	UnaryOperator(Operator, Box<Expression>),
 	// TODO: should just use child expression instead of function name
-	Call(String),
-	Cast,
-	StructAccess(String),
-	StringLiteral(String),
-	ArrayLiteral,
-	ArrayIndex,
-}
-
-impl TryFrom<parser::ExpressionKind> for ExpressionKind {
-	type Error = ();
-
-	fn try_from(kind: parser::ExpressionKind) -> Result<Self, Self::Error> {
-		Ok(match kind {
-			parser::ExpressionKind::NumberLiteral(n) => ExpressionKind::NumberLiteral(n),
-			parser::ExpressionKind::BoolLiteral(b) => ExpressionKind::BoolLiteral(b),
-			// parser::ExpressionKind::Declaration(var) => ExpressionKind::Declaration(var),
-			// parser::ExpressionKind::Identifier(name) => ExpressionKind::Identifier(name),
-			parser::ExpressionKind::Operator(op) => ExpressionKind::Operator(op),
-			parser::ExpressionKind::Call(name) => ExpressionKind::Call(name),
-			parser::ExpressionKind::Cast(_) => ExpressionKind::Cast,
-			// parser::ExpressionKind::AsmLiteral(s) => ExpressionKind::AsmLiteral(s),
-			parser::ExpressionKind::StringLiteral(s) => ExpressionKind::StringLiteral(s),
-			parser::ExpressionKind::ArrayLiteral => ExpressionKind::ArrayLiteral,
-			parser::ExpressionKind::ArrayIndex => ExpressionKind::ArrayIndex,
-			_ => Err(())?,
-		})
-	}
+	Call(String, Vec<Expression>),
+	Cast(Box<Expression>),
+	StructAccess(Box<Expression>, String),
+	ArrayLiteral(Vec<Expression>),
+	ArrayIndex(Box<Expression>, Box<Expression>),
 }
 
 #[derive(Debug)]
 pub struct Expression {
 	pub kind: ExpressionKind,
-	pub children: Vec<Expression>,
 	pub value_type: TypeRef,
 	pub span: Span,
 }
 
 impl Expression {
-	pub fn new(ty: TypeRef, kind: ExpressionKind, children: Vec<Expression>) -> Expression {
-		Self::new_spanned(ty, kind, children, Default::default())
+	pub fn new(ty: TypeRef, kind: ExpressionKind) -> Expression {
+		Self::new_spanned(ty, kind, Default::default())
 	}
-	pub fn new_spanned(
-		ty: TypeRef,
-		kind: ExpressionKind,
-		children: Vec<Expression>,
-		span: Span,
-	) -> Self {
+	pub fn new_spanned(ty: TypeRef, kind: ExpressionKind, span: Span) -> Self {
 		Self {
 			kind,
-			children,
 			value_type: ty,
 			span,
+		}
+	}
+	pub fn list_children(&self) -> Box<[&Expression]> {
+		match &self.kind {
+			ExpressionKind::BinaryOperator(_, a, b) => [&**a, &**b].into(),
+			ExpressionKind::UnaryOperator(_, a) => [&**a].into(),
+			ExpressionKind::Call(_, args) => args.iter().collect(),
+			ExpressionKind::Cast(a) => [&**a].into(),
+			ExpressionKind::StructAccess(a, _) => [&**a].into(),
+			ExpressionKind::ArrayLiteral(values) => values.iter().collect(),
+			ExpressionKind::ArrayIndex(a, b) => [&**a, &**b].into(),
+			_ => [].into(),
 		}
 	}
 }
 
 #[derive(Debug)]
 pub enum StatementKind {
-	Expression,
-	Return,
-	If(Rc<Scope>, Option<Box<Statement>>),
-	While(Rc<Scope>),
+	Expression(Expression),
+	Return(Option<Expression>),
+	If(Rc<Scope>, Expression, Option<Box<Statement>>),
+	While(Rc<Scope>, Expression),
 	Block(Rc<Scope>),
 }
 
 #[derive(Debug)]
 pub struct Statement {
 	pub kind: StatementKind,
-	pub children: Vec<Expression>,
 }
 
 impl Statement {
-	pub fn new(kind: StatementKind, children: Vec<Expression>) -> Statement {
-		Statement { kind, children }
+	pub fn new(kind: StatementKind) -> Statement {
+		Statement { kind }
 	}
 }
 
@@ -481,11 +463,10 @@ impl AST {
 impl Expression {
 	/// Turns the expression into a cast into the given type
 	fn replace_with_cast(&mut self, ty: TypeRef) {
-		let mut cast = Expression::new(ty, ExpressionKind::Cast, vec![]);
+		let mut cast = Expression::new(ty, ExpressionKind::NumberLiteral(0));
 		std::mem::swap(self, &mut cast);
-		// self and cast have swapped
-		// so this would actually be cast.children.push(self)
-		self.children.push(cast);
+		// self is now the cast
+		self.kind = ExpressionKind::Cast(cast.into());
 	}
 
 	/// Turns the expression into a cast that removes the reference

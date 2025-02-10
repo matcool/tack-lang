@@ -127,16 +127,20 @@ impl Compiler<'_> {
 
 	fn compile_statement(&mut self, stmt: &Statement) {
 		match &stmt.kind {
-			StatementKind::Return => {
-				let value = self.compile_expression(&stmt.children[0]);
-				self.body += &format!("return {value};\n");
+			StatementKind::Return(value) => {
+				if let Some(value) = value {
+					let value = self.compile_expression(value);
+					self.body += &format!("return {value};\n");
+				} else {
+					self.body += "return;\n";
+				}
 			}
-			StatementKind::Expression => {
-				let value = self.compile_expression(&stmt.children[0]);
+			StatementKind::Expression(expr) => {
+				let value = self.compile_expression(expr);
 				self.body += &format!("{value};\n");
 			}
-			StatementKind::If(scope, else_stmt) => {
-				let cond = self.compile_expression(&stmt.children[0]);
+			StatementKind::If(scope, cond, else_stmt) => {
+				let cond = self.compile_expression(cond);
 				self.body += &format!("if ({cond}) {{\n");
 				self.compile_scope(scope);
 				self.body += "}\n";
@@ -146,13 +150,13 @@ impl Compiler<'_> {
 					self.body += "}\n";
 				}
 			}
-			StatementKind::While(scope) => {
+			StatementKind::While(scope, cond_expr) => {
 				let condition_var = self.allocate_value(BUILTIN_TYPE_BOOL);
-				let cond = self.compile_expression(&stmt.children[0]);
+				let cond = self.compile_expression(cond_expr);
 				self.body += &format!("{condition_var} = {cond};\n");
 				self.body += &format!("while ({condition_var}) {{\n");
 				self.compile_scope(scope);
-				let cond = self.compile_expression(&stmt.children[0]);
+				let cond = self.compile_expression(cond_expr);
 				self.body += &format!("{condition_var} = {cond};\n");
 				self.body += "}\n";
 			}
@@ -173,16 +177,16 @@ impl Compiler<'_> {
 				// TODO: properly escape string literal, or just array it
 				format!("((struct str){{{str:?}, {}}})", str.len())
 			}
-			ExpressionKind::Operator(Operator::Assign) => {
-				let left = self.compile_expression(&expr.children[0]);
-				let right = self.compile_expression(&expr.children[1]);
+			ExpressionKind::BinaryOperator(Operator::Assign, left, right) => {
+				let left = self.compile_expression(left);
+				let right = self.compile_expression(right);
 				self.body += &format!("(*{left}) = {right}");
 				// expression results in void, return an empty string
 				String::new()
 			}
-			ExpressionKind::Operator(op) if op.is_binary() => {
-				let left = self.compile_expression(&expr.children[0]);
-				let right = self.compile_expression(&expr.children[1]);
+			ExpressionKind::BinaryOperator(op, left, right) if op.is_binary() => {
+				let left = self.compile_expression(left);
+				let right = self.compile_expression(right);
 				let c_op = match op {
 					Operator::Add => "+",
 					Operator::Sub => "-",
@@ -205,13 +209,13 @@ impl Compiler<'_> {
 				};
 				self.allocate_value_and_set(expr.value_type, format!("{left} {c_op} {right}"))
 			}
-			ExpressionKind::Operator(Operator::Negate) => {
-				let value = self.compile_expression(&expr.children[0]);
+			ExpressionKind::UnaryOperator(Operator::Negate, value) => {
+				let value = self.compile_expression(value);
 				format!("(-{value})")
 			}
-			ExpressionKind::Operator(Operator::Reference | Operator::Dereference) => {
+			ExpressionKind::UnaryOperator(Operator::Reference | Operator::Dereference, value) => {
 				// since we store ref types as pointers, this does not need to do anything
-				self.compile_expression(&expr.children[0])
+				self.compile_expression(value)
 			}
 			ExpressionKind::Declaration(var) => {
 				let value = self.allocate_value(var.ty);
@@ -222,9 +226,9 @@ impl Compiler<'_> {
 				let value = self.variables.get(&var.unique_id).unwrap().clone();
 				format!("(&{value})")
 			}
-			ExpressionKind::Cast => {
-				let value = self.compile_expression(&expr.children[0]);
-				let from = expr.children[0].value_type;
+			ExpressionKind::Cast(child) => {
+				let value = self.compile_expression(child);
+				let from = child.value_type;
 				let into = expr.value_type;
 
 				if from == into && from.reference && !into.reference {
@@ -256,9 +260,9 @@ impl Compiler<'_> {
 					}
 				}
 			}
-			ExpressionKind::StructAccess(name) => {
-				let mut value = self.compile_expression(&expr.children[0]);
-				if expr.children[0].value_type.reference {
+			ExpressionKind::StructAccess(child, name) => {
+				let mut value = self.compile_expression(child);
+				if child.value_type.reference {
 					value = format!("(*{value})");
 				}
 				value = format!("({value}.{name})");
@@ -267,25 +271,20 @@ impl Compiler<'_> {
 				}
 				value
 			}
-			ExpressionKind::ArrayLiteral => {
-				let elements = expr
-					.children
-					.iter()
-					.map(|e| self.compile_expression(e))
-					.join(", ");
+			ExpressionKind::ArrayLiteral(values) => {
+				let elements = values.iter().map(|e| self.compile_expression(e)).join(", ");
 				format!("(({}){{{elements}}})", self.add_array(expr.value_type))
 			}
-			ExpressionKind::ArrayIndex => {
-				let mut arr = self.compile_expression(&expr.children[0]);
-				if self.ast.is_array(expr.children[0].value_type) {
+			ExpressionKind::ArrayIndex(arr_expr, index) => {
+				let mut arr = self.compile_expression(arr_expr);
+				if self.ast.is_array(arr_expr.value_type) {
 					arr = format!("{arr}.data");
 				}
-				let index = self.compile_expression(&expr.children[1]);
+				let index = self.compile_expression(index);
 				format!("(&({arr})[{index}])")
 			}
-			ExpressionKind::Call(func_name) => {
-				let args = expr
-					.children
+			ExpressionKind::Call(func_name, args) => {
+				let args = args
 					.iter()
 					.map(|child| self.compile_expression(child))
 					.join(", ");
