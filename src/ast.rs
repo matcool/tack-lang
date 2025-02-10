@@ -38,7 +38,7 @@ pub enum Type {
 	Array(TypeRef, usize),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash)]
 pub struct TypeRef {
 	pub id: usize,
 	pub reference: bool,
@@ -87,6 +87,14 @@ impl TypeRef {
 	}
 }
 
+impl PartialEq for TypeRef {
+	fn eq(&self, other: &TypeRef) -> bool {
+		self.id == other.id
+	}
+}
+
+impl Eq for TypeRef {}
+
 #[derive(Debug, Clone)]
 pub struct Variable {
 	pub name: String,
@@ -104,8 +112,7 @@ pub enum ExpressionKind {
 	// TODO: should just use child expression instead of function name
 	Call(String),
 	Cast,
-	StructAccess(TypeRef, String),
-	AsmLiteral(String),
+	StructAccess(String),
 	StringLiteral(String),
 	ArrayLiteral,
 	ArrayIndex,
@@ -141,12 +148,20 @@ pub struct Expression {
 }
 
 impl Expression {
-	pub fn new(kind: ExpressionKind, children: Vec<Expression>) -> Expression {
-		Expression {
+	pub fn new(ty: TypeRef, kind: ExpressionKind, children: Vec<Expression>) -> Expression {
+		Self::new_spanned(ty, kind, children, Default::default())
+	}
+	pub fn new_spanned(
+		ty: TypeRef,
+		kind: ExpressionKind,
+		children: Vec<Expression>,
+		span: Span,
+	) -> Self {
+		Self {
 			kind,
 			children,
-			value_type: TypeRef::unknown(),
-			span: Default::default(),
+			value_type: ty,
+			span,
 		}
 	}
 }
@@ -217,13 +232,26 @@ impl Scope {
 		variable
 	}
 
-	pub fn find_variable(&self, name: &str) -> Option<Variable> {
+	fn find_variable(&self, name: &str) -> Option<Variable> {
 		self.variables
 			.borrow()
 			.iter()
 			.rev()
 			.find(|var| var.name == name)
 			.cloned()
+	}
+
+	pub fn find_variable_recursive(&self, name: &str) -> Option<Variable> {
+		if let Some(var) = self.find_variable(name) {
+			return Some(var);
+		} else if let Some(var) = self
+			.parent
+			.clone()
+			.and_then(|s| s.find_variable_recursive(name))
+		{
+			return Some(var);
+		}
+		None
 	}
 }
 
@@ -246,8 +274,6 @@ pub struct Function {
 	pub arguments: Vec<Variable>,
 	pub return_type: TypeRef,
 	pub scope: Rc<Scope>,
-	pub is_struct_return: bool,
-	pub scope_size: RefCell<usize>,
 	pub is_extern: bool,
 }
 
@@ -258,16 +284,8 @@ impl Function {
 			arguments: vec![],
 			return_type: TypeRef::unknown(),
 			scope: Rc::new(Scope::new(None)),
-			is_struct_return: false,
-			scope_size: 0.into(),
 			is_extern: false,
 		}
-	}
-}
-
-impl PartialEq for TypeRef {
-	fn eq(&self, other: &TypeRef) -> bool {
-		self.id == other.id
 	}
 }
 
@@ -368,16 +386,16 @@ impl AST {
 			.expect("invalid type id passed into get_type")
 	}
 
-	// pub fn get_type_size(&self, type_ref: TypeRef) -> usize {
-	// 	self.get_type(type_ref).size(self)
-	// }
-
-	pub fn is_struct_or_array(&self, type_ref: TypeRef) -> bool {
-		matches!(self.get_type(type_ref), Type::Struct(_) | Type::Array(..))
+	pub fn is_array(&self, type_ref: TypeRef) -> bool {
+		matches!(self.get_type(type_ref), Type::Array(..))
 	}
 
 	pub fn is_pointer(&self, type_ref: TypeRef) -> bool {
 		matches!(self.get_type(type_ref), Type::Pointer(_))
+	}
+
+	pub fn is_struct(&self, type_ref: TypeRef) -> bool {
+		matches!(self.get_type(type_ref), Type::Struct(_))
 	}
 
 	pub fn is_integer(&self, type_ref: TypeRef) -> bool {
@@ -393,8 +411,7 @@ impl AST {
 impl Expression {
 	/// Turns the expression into a cast into the given type
 	fn replace_with_cast(&mut self, ty: TypeRef) {
-		let mut cast = Expression::new(ExpressionKind::Cast, vec![]);
-		cast.value_type = ty;
+		let mut cast = Expression::new(ty, ExpressionKind::Cast, vec![]);
 		std::mem::swap(self, &mut cast);
 		// self and cast have swapped
 		// so this would actually be cast.children.push(self)

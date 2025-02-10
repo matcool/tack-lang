@@ -4,9 +4,9 @@ use crate::{
 	ast::{
 		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind,
 		StructType, Type, TypeRef, Variable, AST, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_I32,
-		BUILTIN_TYPE_INT_LITERAL, BUILTIN_TYPE_VOID,
+		BUILTIN_TYPE_INT_LITERAL, BUILTIN_TYPE_STR, BUILTIN_TYPE_UPTR, BUILTIN_TYPE_VOID,
 	},
-	lexer::{Operator, Span},
+	lexer::Operator,
 	parser::{self, Parser},
 };
 
@@ -80,18 +80,22 @@ impl TypeChecker {
 		let mut function = Function::new(parsed.name);
 		function.return_type = return_type;
 		function.arguments = arguments;
-		let scope = self.check_scope(parsed.scope, &function)?;
+		let scope = self.check_function_scope(parsed.scope, &mut function)?;
 		function.scope = scope.into();
 
 		Ok(function)
 	}
 
-	fn check_scope(
+	fn check_function_scope(
 		&mut self,
 		parsed: parser::Scope,
-		function: &Function,
+		function: &mut Function,
 	) -> Result<Rc<Scope>, TypeCheckerError> {
 		let scope = Rc::new(Scope::new(None));
+		// add the function args
+		for arg in &mut function.arguments {
+			*arg = scope.add_variable(arg.clone());
+		}
 		let mut checker = FunctionTypeChecker {
 			ast: &mut self.ast,
 			function,
@@ -164,9 +168,7 @@ impl FunctionTypeChecker<'_> {
 						"between return type and the expression".into(),
 					));
 				}
-				if !self.function.return_type.reference && !self.function.is_struct_return {
-					expr.cast_if_reference();
-				}
+				expr.cast_if_reference();
 				Statement::new(StatementKind::Return, vec![expr])
 			}
 			parser::StatementKind::If(parsed_scope, else_stmt) => {
@@ -189,7 +191,17 @@ impl FunctionTypeChecker<'_> {
 				let scope = self.check_scope(parsed_scope)?;
 				Statement::new(StatementKind::Block(scope), vec![])
 			}
-			_ => todo!("{:?}", parsed),
+			parser::StatementKind::While(parsed_scope) => {
+				let mut condition = self.check_expression(parsed.children.remove(0))?;
+				condition.cast_if_reference();
+				if condition.value_type != BUILTIN_TYPE_BOOL {
+					return Err(TypeCheckerError::TypeMismatch(
+						"Condition must be a boolean".into(),
+					));
+				}
+				let scope = self.check_scope(parsed_scope)?;
+				Statement::new(StatementKind::While(scope), vec![condition])
+			}
 		})
 	}
 
@@ -205,7 +217,20 @@ impl FunctionTypeChecker<'_> {
 				self.check_expression_into(parsed, BUILTIN_TYPE_BOOL)?
 			}
 			parser::ExpressionKind::Operator(Operator::Assign) => {
-				let mut expr = self.check_expression_into(parsed, TypeRef::unknown())?;
+				let mut iter = parsed.children.into_iter();
+				let lhs = iter.next().unwrap();
+				let rhs = iter.next().unwrap();
+				// check rhs first
+				let mut rhs = self.check_expression(rhs)?;
+				let lhs = self.check_expression(lhs)?;
+				rhs.cast_if_reference();
+				let mut expr = Expression::new_spanned(
+					BUILTIN_TYPE_VOID,
+					ExpressionKind::Operator(Operator::Assign),
+					vec![lhs, rhs],
+					parsed.span,
+				);
+
 				let lhs = expr.children[0].value_type;
 				if !lhs.reference {
 					return Err(TypeCheckerError::TypeMismatch(
@@ -218,13 +243,13 @@ impl FunctionTypeChecker<'_> {
 
 				if lhs != rhs {
 					return Err(TypeCheckerError::TypeMismatch(format!(
-						"{} and {} don't match",
+						"{} and {} don't match {:?}",
 						self.format_type(lhs),
-						self.format_type(rhs)
+						self.format_type(rhs),
+						expr.span,
 					)));
 				}
 
-				expr.value_type = BUILTIN_TYPE_VOID;
 				expr
 			}
 			parser::ExpressionKind::Operator(op) if op.is_binary() => {
@@ -302,13 +327,25 @@ impl FunctionTypeChecker<'_> {
 				};
 				expr
 			}
+			parser::ExpressionKind::Operator(Operator::Negate) => {
+				let mut expr = self.check_expression_into(parsed, TypeRef::unknown())?;
+				expr.value_type = expr.children[0].value_type;
+				if expr.value_type != BUILTIN_TYPE_INT_LITERAL
+					&& !self.ast.is_integer(expr.value_type)
+				{
+					println!("{}", self.format_type(expr.value_type));
+					return Err(TypeCheckerError::InvalidOperand);
+				}
+				expr
+			}
 			parser::ExpressionKind::Declaration(parsed_var) => {
 				let var = self
 					.scope
 					.add_variable(self.ast.check_parsed_var(parsed_var)?);
-				self.check_expression_with(
+				Expression::new_spanned(
 					var.ty.add_reference(),
 					ExpressionKind::Declaration(var),
+					vec![],
 					parsed.span,
 				)
 			}
@@ -316,11 +353,235 @@ impl FunctionTypeChecker<'_> {
 				let Some(var) = self.find_variable(name) else {
 					Err(TypeCheckerError::VariableNotFound(name.clone()))?
 				};
-				self.check_expression_with(
+				Expression::new_spanned(
 					var.ty.add_reference(),
 					ExpressionKind::Identifier(var),
+					vec![],
 					parsed.span,
 				)
+			}
+			parser::ExpressionKind::StringLiteral(_) => {
+				let expr = self.check_expression_into(parsed, BUILTIN_TYPE_STR)?;
+				expr
+			}
+			parser::ExpressionKind::StructAccess(field_name) => {
+				let mut struct_expr = self.check_first_child(parsed.children)?;
+				let struct_ty: Option<TypeRef>;
+				match self.ast.get_type(struct_expr.value_type) {
+					Type::Struct(_) => {
+						struct_ty = Some(struct_expr.value_type);
+					}
+					Type::Pointer(inner) => {
+						if self.ast.is_struct(*inner) {
+							struct_ty = Some(*inner);
+						} else {
+							struct_ty = None;
+						}
+					}
+					_ => struct_ty = None,
+				}
+				let Some(struct_ty) = struct_ty else {
+					return Err(TypeCheckerError::TypeMismatch(
+						"Expected lhs to be a struct".into(),
+					));
+				};
+				if self.ast.is_pointer(struct_expr.value_type) {
+					struct_expr = Expression::new(
+						struct_ty.add_reference(),
+						ExpressionKind::Operator(Operator::Dereference),
+						vec![struct_expr],
+					);
+				}
+				let Type::Struct(struct_ty) = self.ast.get_type(struct_ty) else {
+					unreachable!()
+				};
+				if let Some(field) = struct_ty.fields.iter().find(|f| &f.name == &field_name) {
+					let ty = if struct_expr.value_type.reference {
+						field.ty.add_reference()
+					} else {
+						field.ty
+					};
+					let expr = Expression::new_spanned(
+						ty,
+						ExpressionKind::StructAccess(field.name.clone()),
+						vec![struct_expr],
+						parsed.span,
+					);
+					expr
+				} else {
+					return Err(TypeCheckerError::TypeMismatch(format!(
+						"could not find {} in {}",
+						field_name, struct_ty.name
+					)));
+				}
+			}
+			parser::ExpressionKind::ArrayLiteral => {
+				let mut expr = self.check_expression_into(parsed, TypeRef::unknown())?;
+				let mut inner_type = TypeRef::unknown();
+				for child in &mut expr.children {
+					child.cast_if_reference();
+					if inner_type.is_unknown() {
+						inner_type = child.value_type;
+					} else {
+						self.promote_int_literal_into(child, inner_type);
+						if inner_type != child.value_type {
+							return Err(TypeCheckerError::TypeMismatch(format!(
+								"Array expected {} values, got {}",
+								inner_type.formatted(self.ast),
+								child.value_type.formatted(self.ast)
+							)));
+						}
+					}
+				}
+				if inner_type.is_unknown() {
+					return Err(TypeCheckerError::UnknownType(
+						"Could not figure out type of array".into(),
+					));
+				}
+				expr.value_type = self
+					.ast
+					.find_type_or_add(Type::Array(inner_type, expr.children.len()));
+				expr
+			}
+			parser::ExpressionKind::ArrayIndex => {
+				let mut expr = self.check_expression_into(parsed, TypeRef::unknown())?;
+
+				let index_expr = &mut expr.children[1];
+				index_expr.cast_if_reference();
+				let index_type = self.promote_int_literal_into(index_expr, BUILTIN_TYPE_I32);
+				if !self.ast.is_integer(index_type) {
+					return Err(TypeCheckerError::TypeMismatch(
+						"Expected integer type when indexing array".into(),
+					));
+				}
+
+				let arr_expr = &mut expr.children[0];
+				arr_expr.cast_if_reference();
+				let arr_type = arr_expr.value_type;
+
+				expr.value_type = if let Type::Pointer(inner) = self.ast.get_type(arr_type) {
+					inner.add_reference()
+				} else if let Type::Array(inner, _) = self.ast.get_type(arr_type) {
+					inner.add_reference()
+				} else {
+					return Err(TypeCheckerError::TypeMismatch(
+						"expected array or pointer".into(),
+					));
+				};
+
+				expr
+			}
+			parser::ExpressionKind::Cast(into) => {
+				let into = self.ast.check_parsed_type(into)?;
+				let mut child = self.check_first_child(parsed.children)?;
+				let from = child.value_type;
+
+				match (self.ast.get_type(from), self.ast.get_type(into)) {
+					(
+						Type::BuiltIn(
+							BuiltInType::I32
+							| BuiltInType::U8
+							| BuiltInType::Bool
+							| BuiltInType::UPtr,
+						),
+						Type::BuiltIn(BuiltInType::U8 | BuiltInType::I32 | BuiltInType::UPtr),
+					) => {}
+					(
+						Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8 | BuiltInType::UPtr),
+						Type::BuiltIn(BuiltInType::Bool),
+					) => {}
+					(Type::Pointer(_), Type::BuiltIn(BuiltInType::UPtr)) => {}
+					(Type::Pointer(_), Type::Pointer(_)) => {}
+					(Type::BuiltIn(BuiltInType::UPtr), Type::Pointer(_)) => {}
+					(
+						Type::BuiltIn(BuiltInType::IntLiteral),
+						Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8 | BuiltInType::UPtr),
+					) => {
+						self.promote_int_literal_into(&mut child, into);
+						return Ok(child);
+					}
+					_ => {
+						return Err(TypeCheckerError::InvalidCast);
+					}
+				}
+				child.cast_if_reference();
+
+				Expression::new_spanned(into, ExpressionKind::Cast, vec![child], parsed.span)
+			}
+			parser::ExpressionKind::Operator(Operator::Reference) => {
+				let child = self.check_first_child(parsed.children)?;
+				if !child.value_type.reference {
+					return Err(TypeCheckerError::InvalidReference);
+				}
+				let ty = self
+					.ast
+					.find_type_or_add(Type::Pointer(child.value_type.remove_reference()));
+				Expression::new_spanned(
+					ty,
+					ExpressionKind::Operator(Operator::Reference),
+					vec![child],
+					parsed.span,
+				)
+			}
+			parser::ExpressionKind::Operator(Operator::Dereference) => {
+				let mut child = self.check_first_child(parsed.children)?;
+				let Type::Pointer(inner) = self.ast.get_type(child.value_type) else {
+					return Err(TypeCheckerError::InvalidDereference);
+				};
+				child.cast_if_reference();
+				Expression::new_spanned(
+					inner.add_reference(),
+					ExpressionKind::Operator(Operator::Dereference),
+					vec![child],
+					parsed.span,
+				)
+			}
+			parser::ExpressionKind::Call(ref func_name) => {
+				if let Some(calling_function) = self
+					.ast
+					.functions
+					.iter()
+					.find(|f| &f.name == func_name)
+					.or_else(|| {
+						if func_name == &self.function.name {
+							Some(self.function)
+						} else {
+							None
+						}
+					}) {
+					let func_arguments = calling_function.arguments.clone();
+					let mut expr =
+						self.check_expression_into(parsed, calling_function.return_type)?;
+
+					if expr.children.len() != func_arguments.len() {
+						return Err(TypeCheckerError::ArgumentCountMismatch);
+					}
+
+					for (arg, exp) in func_arguments.iter().zip(expr.children.iter_mut()) {
+						exp.cast_if_reference();
+						let ty = self.promote_int_literal_into(exp, arg.ty);
+						if ty != arg.ty {
+							return Err(TypeCheckerError::TypeMismatch(format!(
+								"Expected {} to be {}",
+								self.format_type(ty),
+								self.format_type(arg.ty),
+							)));
+						}
+					}
+
+					expr
+				} else if func_name == "syscall" {
+					let mut expr = self.check_expression_into(parsed, BUILTIN_TYPE_UPTR)?;
+
+					for exp in expr.children.iter_mut() {
+						exp.cast_if_reference();
+						self.promote_int_literal_into(exp, BUILTIN_TYPE_UPTR);
+					}
+
+					expr
+				} else {
+					return Err(TypeCheckerError::FunctionNotFound(func_name.clone()));
+				}
 			}
 			_ => todo!("{:?}", parsed),
 		})
@@ -339,22 +600,24 @@ impl FunctionTypeChecker<'_> {
 			.map(|c| self.check_expression(c))
 			.collect();
 		let children = children?;
-		let mut expr = Expression::new(parsed.kind.try_into().unwrap(), children);
-		expr.value_type = ty;
-		expr.span = parsed.span;
-		Ok(expr)
+		Ok(Expression::new_spanned(
+			ty,
+			parsed.kind.try_into().unwrap(),
+			children,
+			parsed.span,
+		))
 	}
 
-	fn check_expression_with(
+	fn check_first_child(
 		&mut self,
-		ty: TypeRef,
-		kind: ExpressionKind,
-		span: Span,
-	) -> Expression {
-		let mut expr = Expression::new(kind, vec![]);
-		expr.value_type = ty;
-		expr.span = span;
-		expr
+		children: Vec<parser::Expression>,
+	) -> Result<Expression, TypeCheckerError> {
+		let children: Result<_, TypeCheckerError> = children
+			.into_iter()
+			.map(|c| self.check_expression(c))
+			.collect();
+		let children: Vec<_> = children?;
+		Ok(children.into_iter().next().unwrap())
 	}
 
 	fn promote_int_literal_into(&self, expression: &mut Expression, type_ref: TypeRef) -> TypeRef {
@@ -374,14 +637,7 @@ impl FunctionTypeChecker<'_> {
 	}
 
 	fn find_variable(&self, name: &str) -> Option<Variable> {
-		if let Some(var) = self.scope.find_variable(name) {
-			return Some(var);
-		} else if let Some(var) = self
-			.scope
-			.parent
-			.clone()
-			.and_then(|s| s.find_variable(name))
-		{
+		if let Some(var) = self.scope.find_variable_recursive(name) {
 			return Some(var);
 		}
 		self.function

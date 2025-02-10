@@ -1,12 +1,8 @@
 use std::path::PathBuf;
 use std::process::{Command, Output};
 
-use itertools::Itertools;
-use path_slash::PathExt;
-
 use crate::checker::TypeChecker;
 use crate::compiler::Compiler;
-// use crate::graph::GraphGen;
 use crate::lexer::*;
 use crate::parser::Parser;
 
@@ -21,8 +17,8 @@ pub fn invoke_command(args: String) -> Output {
 pub fn run<S: AsRef<std::path::Path> + Into<PathBuf> + Clone>(
 	input_path: S,
 	output_path: Option<String>,
-	graph_file: Option<String>,
-	build: bool,
+	_graph_file: Option<String>,
+	_build: bool,
 ) {
 	let contents = match std::fs::read_to_string(input_path.clone()) {
 		Ok(value) => value,

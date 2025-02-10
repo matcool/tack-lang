@@ -17,8 +17,8 @@ fn print_num(num: i32) {
 		size = size + 1;
 	}
 
-	syscall(4, 1, start, size);
-	syscall(4, 1, "\n".data, 1);
+	syscall(1, 1, start, size);
+	syscall(1, 1, "\n".data, 1);
 }
 
 fn fib(i: i32): i32 {

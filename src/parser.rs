@@ -1,5 +1,4 @@
 use crate::lexer::{Keyword, Operator, Span, Token, TokenKind};
-use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -17,6 +16,9 @@ pub struct ParsedStruct {
 
 impl Operator {
 	const MAX_PRECEDENCE: i32 = 10;
+	const CAST_PRECEDENCE: i32 = Self::MAX_PRECEDENCE;
+	const PREFIX_PRECEDENCE: i32 = Self::MAX_PRECEDENCE + 1;
+	const POSTFIX_PRECEDENCE: i32 = Self::MAX_PRECEDENCE + 2;
 	fn precedence(&self) -> Option<i32> {
 		Some(match self {
 			Operator::Assign => 1,
@@ -402,10 +404,10 @@ impl Parser {
 		match token.kind {
 			TokenKind::Operator(op) if op.precedence().is_some() => op.precedence().unwrap(),
 			// Postfix
-			TokenKind::LeftParen
-			| TokenKind::LeftBracket
-			| TokenKind::Operator(Operator::As)
-			| TokenKind::Operator(Operator::Dot) => Operator::MAX_PRECEDENCE + 1,
+			TokenKind::LeftParen | TokenKind::LeftBracket | TokenKind::Operator(Operator::Dot) => {
+				Operator::POSTFIX_PRECEDENCE
+			}
+			TokenKind::Operator(Operator::As) => Operator::CAST_PRECEDENCE,
 			_ => 0,
 		}
 	}
@@ -479,7 +481,7 @@ impl Parser {
 			TokenKind::Operator(
 				op @ (Operator::Sub | Operator::Not | Operator::Multiply | Operator::BitAnd),
 			) => {
-				let child = self.parse_expression()?;
+				let child = self.parse_expression_precedence(Operator::PREFIX_PRECEDENCE)?;
 				let op = match op {
 					Operator::Sub => Operator::Negate,
 					Operator::Multiply => Operator::Dereference,

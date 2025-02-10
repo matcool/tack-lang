@@ -42,6 +42,14 @@ fn dump_statement(ast: &AST, stmt: &Statement, indent: &str) {
 				dump_statement(ast, else_stmt, &format!("  {indent}"));
 			}
 		}
+		StatementKind::While(body) => {
+			println!("{indent}Statement: While");
+			let indent = format!("  {indent}");
+			println!("{indent}Condition:");
+			dump_expression(ast, &stmt.children[0], &format!("  {indent}"));
+			println!("{indent}Body:");
+			dump_scope(ast, body, &format!("  {indent}"));
+		}
 		StatementKind::Block(scope) => {
 			println!("{indent}Scope:");
 			dump_scope(ast, scope, &format!("  {indent}"));
