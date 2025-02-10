@@ -83,7 +83,7 @@ impl TypeChecker {
 		function.attributes = parsed.attributes;
 		if !function.attributes.is_c_extern {
 			let scope = self.check_function_scope(parsed.scope, &mut function)?;
-			function.scope = scope.into();
+			function.scope = scope;
 		}
 
 		Ok(function)
@@ -265,12 +265,12 @@ impl FunctionTypeChecker<'_> {
 				let lhs = self.promote_int_literal_into(&mut expr.children[0], rhs);
 
 				// Boolean operators
-				if matches!(op, Operator::And | Operator::Or) {
-					if lhs != BUILTIN_TYPE_BOOL || rhs != BUILTIN_TYPE_BOOL {
-						return Err(TypeCheckerError::TypeMismatch(
-							"Operands must be bool".into(),
-						));
-					}
+				if matches!(op, Operator::And | Operator::Or)
+					&& (lhs != BUILTIN_TYPE_BOOL || rhs != BUILTIN_TYPE_BOOL)
+				{
+					return Err(TypeCheckerError::TypeMismatch(
+						"Operands must be bool".into(),
+					));
 				}
 
 				// Pointer arithmetic
@@ -364,8 +364,7 @@ impl FunctionTypeChecker<'_> {
 				)
 			}
 			parser::ExpressionKind::StringLiteral(_) => {
-				let expr = self.check_expression_into(parsed, BUILTIN_TYPE_STR)?;
-				expr
+				self.check_expression_into(parsed, BUILTIN_TYPE_STR)?
 			}
 			parser::ExpressionKind::StructAccess(field_name) => {
 				let mut struct_expr = self.check_first_child(parsed.children)?;
@@ -399,19 +398,19 @@ impl FunctionTypeChecker<'_> {
 				let Type::Struct(struct_ty) = self.ast.get_type(struct_ty) else {
 					unreachable!()
 				};
-				if let Some(field) = struct_ty.fields.iter().find(|f| &f.name == &field_name) {
+				if let Some(field) = struct_ty.fields.iter().find(|f| f.name == field_name) {
 					let ty = if struct_expr.value_type.reference {
 						field.ty.add_reference()
 					} else {
 						field.ty
 					};
-					let expr = Expression::new_spanned(
+
+					Expression::new_spanned(
 						ty,
 						ExpressionKind::StructAccess(field.name.clone()),
 						vec![struct_expr],
 						parsed.span,
-					);
-					expr
+					)
 				} else {
 					return Err(TypeCheckerError::TypeMismatch(format!(
 						"could not find {} in {}",

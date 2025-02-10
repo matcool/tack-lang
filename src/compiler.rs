@@ -5,7 +5,7 @@ use itertools::Itertools;
 use crate::{
 	ast::{
 		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind,
-		StructType, Type, TypeRef, AST, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_STR,
+		StructType, Type, TypeRef, AST, BUILTIN_TYPE_BOOL,
 	},
 	lexer::Operator,
 };
@@ -76,7 +76,7 @@ impl Compiler<'_> {
 		self.struct_defitions += &format!("struct {name} {{ {inner_fmt} data[{size}]; }};\n");
 		self.struct_counter += 1;
 		self.generated_arrays.insert((inner, size), name.clone());
-		return "struct ".to_string() + &name;
+		"struct ".to_string() + &name
 	}
 
 	fn reset_values(&mut self) {
@@ -139,11 +139,11 @@ impl Compiler<'_> {
 				let cond = self.compile_expression(&stmt.children[0]);
 				self.body += &format!("if ({cond}) {{\n");
 				self.compile_scope(scope);
-				self.body += &format!("}}\n");
+				self.body += "}\n";
 				if let Some(else_stmt) = else_stmt {
-					self.body += &format!("else {{\n");
+					self.body += "else {\n";
 					self.compile_statement(else_stmt);
-					self.body += &format!("}}\n");
+					self.body += "}\n";
 				}
 			}
 			StatementKind::While(scope) => {
@@ -154,12 +154,12 @@ impl Compiler<'_> {
 				self.compile_scope(scope);
 				let cond = self.compile_expression(&stmt.children[0]);
 				self.body += &format!("{condition_var} = {cond};\n");
-				self.body += &format!("}}\n");
+				self.body += "}\n";
 			}
 			StatementKind::Block(scope) => {
-				self.body += &format!("{{\n");
+				self.body += "{\n";
 				self.compile_scope(scope);
-				self.body += &format!("}}\n");
+				self.body += "}\n";
 			}
 			k => todo!("{k:?}"),
 		}

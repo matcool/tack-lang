@@ -1,15 +1,16 @@
 use path_slash::PathBufExt;
 use std::{
+	fs::File,
 	io::{BufRead, BufReader},
-	path::PathBuf,
+	path::{Path, PathBuf},
 	process::Command,
 };
 
 use tack::run::run;
 
-fn run_test(path: PathBuf, binary_path: PathBuf) {
+fn run_test(path: &Path, binary_path: &Path) {
 	let mut expected_code = None;
-	for line in BufReader::new(std::fs::File::open(path.clone()).unwrap()).lines() {
+	for line in BufReader::new(File::open(&path).unwrap()).lines() {
 		let line = line.unwrap();
 		let Some((_, comment)) = line.split_once("// ") else {
 			break;
@@ -26,16 +27,18 @@ fn run_test(path: PathBuf, binary_path: PathBuf) {
 
 	run(
 		path,
-		Some(binary_path.to_slash().unwrap().to_string()),
+		Some(binary_path.to_str().unwrap().to_string()),
 		None,
+		false,
 		true,
 	);
 
-	let out = Command::new("bash")
-		.arg("-c")
-		.arg(format!("./{}", binary_path.to_slash().unwrap()))
+	let out = Command::new(std::path::absolute(&binary_path).unwrap())
 		.output()
-		.unwrap();
+		.expect(&format!(
+			"Failed to run test {:?}",
+			path.file_name().unwrap()
+		));
 	let code = out.status.code().unwrap();
 	print!("returned code {code} ");
 	if !out.stdout.is_empty() {
@@ -53,13 +56,13 @@ fn run_test(path: PathBuf, binary_path: PathBuf) {
 }
 
 fn main() {
-	let build_path = std::path::Path::new("tests/build");
+	let build_path = PathBuf::from("tests/build");
 	// ignore if folder already exists
-	let _ = std::fs::create_dir(build_path);
+	let _ = std::fs::create_dir(&build_path);
 	if let Some(path) = std::env::args().nth(1) {
 		run_test(
-			std::path::Path::new("tests").join(path),
-			build_path.join("foo"),
+			&PathBuf::from("tests").join(path),
+			&build_path.join("foo".to_string() + std::env::consts::EXE_SUFFIX),
 		);
 	} else {
 		for folder in std::fs::read_dir("tests").unwrap() {
@@ -77,10 +80,11 @@ fn main() {
 					let binary_path = build_path.join(format!(
 						"{}__{}",
 						folder.file_name().to_str().unwrap(),
-						file_name.strip_suffix(".tack").unwrap()
+						file_name.strip_suffix(".tack").unwrap().to_string()
+							+ std::env::consts::EXE_SUFFIX
 					));
 
-					run_test(file.path(), binary_path);
+					run_test(&file.path(), &binary_path);
 					println!();
 				}
 			}

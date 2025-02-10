@@ -1,36 +1,30 @@
-use path_slash::PathBufExt;
 use std::{path::PathBuf, process::Command};
 
-use tack::run::{invoke_command, run};
+use tack::run::run;
 
 fn print_help_and_exit() -> ! {
 	println!(
 		"tack compiler. very silly language
 
-Usage: tack <input> [options...] [output]
+Usage: tack <input> [options...]
        tack --help (or -h)
 
 Options:
-    -h --help	  	show this text and exit
-    -o --output   	output asm file
-    -b --build 	  	build input using nasm and ld
-    -r --run 	  	run built executable (requires --build)
+    -h --help			show this text and exit
+    --dump				dumps the type checked AST
+    -o --output (path)	built executable path
+    -b --build (path)	directory to put build files
+    -r --run			run built executable (requires -o)
 "
 	);
 	std::process::exit(1);
 }
 
-fn check_compatibility() {
-	if cfg!(windows) && Command::new("bash").arg("--version").output().is_err() {
-		println!("Error: WSL installation not found. Please install WSL and try again.");
-		std::process::exit(1)
-	}
-}
-
 fn main() {
 	let mut input = None;
 	let mut output = None;
-	let mut build = false;
+	let mut dump_ast = false;
+	let mut build_dir = None;
 	let mut execute = false;
 
 	let mut iter = std::env::args().skip(1);
@@ -38,9 +32,11 @@ fn main() {
 		if arg == "-o" || arg == "--output" {
 			output = iter.next();
 		} else if arg == "-b" || arg == "--build" {
-			build = true;
+			build_dir = iter.next();
 		} else if arg == "-r" || arg == "--run" {
 			execute = true;
+		} else if arg == "--dump" {
+			dump_ast = true;
 		} else if arg == "-h" || arg == "--help" {
 			print_help_and_exit();
 		} else if input.is_none() {
@@ -56,19 +52,20 @@ fn main() {
 		print_help_and_exit();
 	};
 
-	if build {
-		check_compatibility();
-	}
-	run(input, output.clone(), Some("graph.gv".into()), build);
+	run(input, output.clone(), build_dir, dump_ast, false);
 
 	if let Some(output) = output {
-		if build && execute {
-			let filename = PathBuf::from(output).to_slash().unwrap().to_string();
-			let out = invoke_command(format!("./{}", filename));
+		if execute {
+			let output = PathBuf::from(output);
+			let filename = output.file_name().unwrap().to_string_lossy();
+			let status = Command::new(std::path::absolute(&output).unwrap())
+				.spawn()
+				.expect("Failed to spawn executable")
+				.wait()
+				.expect("Failed to wait");
 			println!(
-				"\"{filename}\" returned code {}, output:\n{}",
-				out.status.code().unwrap(),
-				String::from_utf8(out.stdout).unwrap()
+				"\"{filename}\" returned code {}",
+				status.code().unwrap_or(-1)
 			);
 		}
 	}

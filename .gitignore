@@ -1,4 +1,5 @@
 /target
 *.gv
 /tests/build
+build/
 .vscode/

@@ -1,4 +1,9 @@
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
+use std::{
+	cell::RefCell,
+	hash::{Hash, Hasher},
+	path::PathBuf,
+	rc::Rc,
+};
 
 use itertools::Itertools;
 
@@ -38,7 +43,7 @@ pub enum Type {
 	Array(TypeRef, usize),
 }
 
-#[derive(Debug, Clone, Copy, Hash)]
+#[derive(Debug, Clone, Copy)]
 pub struct TypeRef {
 	pub id: usize,
 	pub reference: bool,
@@ -90,6 +95,12 @@ impl TypeRef {
 impl PartialEq for TypeRef {
 	fn eq(&self, other: &TypeRef) -> bool {
 		self.id == other.id
+	}
+}
+
+impl Hash for TypeRef {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.id.hash(state);
 	}
 }
 
@@ -184,13 +195,6 @@ pub struct Statement {
 impl Statement {
 	pub fn new(kind: StatementKind, children: Vec<Expression>) -> Statement {
 		Statement { kind, children }
-	}
-
-	fn requires_semicolon(&self) -> bool {
-		!matches!(
-			&self.kind,
-			StatementKind::If(_, _) | StatementKind::While(_) | StatementKind::Block(_)
-		)
 	}
 }
 

@@ -1,7 +1,7 @@
 // returns 6
 
 fn print(msg: str): i32 {
-	syscall(1, 1, msg.data, msg.size);
+	tack_print(msg);
 	return msg.size;
 }
 
