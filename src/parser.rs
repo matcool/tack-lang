@@ -1,5 +1,7 @@
+use std::path::PathBuf;
+
 use crate::{
-	ast,
+	ast, diagnostics,
 	lexer::{Attribute, Keyword, Operator, Span, Token, TokenKind},
 };
 
@@ -153,51 +155,49 @@ pub struct Parser {
 	pub functions: Vec<Function>,
 	pub parsed_structs: Vec<ParsedStruct>,
 	pub imported_files: Vec<String>,
+	input_path: PathBuf,
 }
 
 #[derive(Debug)]
 pub enum ParserError {
-	// InvalidToken(Token),
-	MissingToken, // for when the iterator reaches the end, def need a better name
+	MissingToken,
 }
 
 macro_rules! error_at_token {
-	($token:expr, $expected:expr) => {{
+	($self:expr, $token:expr, $msg:expr) => {{
 		let token = $token;
-		let expected = $expected;
-		eprintln!("Parser error {}:{}", file!(), line!());
-		eprintln!(
-			"Unexpected token at file.tack:{}:{}. Expected {expected} but got {:?}",
-			token.span.line, token.span.column, token.kind
-		);
-		std::process::exit(1);
+		$self.error_at_token(&token, $msg, file!(), line!())
 	}};
 }
 
 macro_rules! expect_token {
-	($token:expr, $pattern:pat, $value:ident) => {{
+	($self:expr, $token:expr, $pattern:pat, $value:ident) => {{
 		let token = $token;
 		match token.kind {
 			$pattern => Ok($value),
-			_ => error_at_token!(token, stringify!($pattern)),
+			_ => error_at_token!($self, token, "Unexpected token"),
 		}
 	}};
-	($token:expr, $pattern:pat) => {{
+	($self:expr, $token:expr, $pattern:pat) => {{
 		let token = $token;
 		match token.kind {
 			$pattern => Ok(token),
-			_ => error_at_token!(token, stringify!($pattern)),
+			_ => error_at_token!($self, token, "Unexpected token"),
 		}
 	}};
 }
 
 impl Parser {
-	pub fn new(tokens: std::iter::Peekable<std::vec::IntoIter<Token>>) -> Parser {
+	pub fn new(
+		tokens: std::iter::Peekable<std::vec::IntoIter<Token>>,
+		input_path: PathBuf,
+	) -> Parser {
 		Parser {
 			tokens,
 			functions: vec![],
 			parsed_structs: vec![],
 			imported_files: vec![],
+			input_path,
 		}
 	}
 
@@ -225,18 +225,18 @@ impl Parser {
 					self.functions.push(function);
 				}
 				TokenKind::Keyword(Keyword::Struct) => {
-					let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
+					let name = expect_token!(self, self.next()?, TokenKind::Identifier(x), x)?;
 
 					let mut parsed_struct = ParsedStruct {
 						name,
 						fields: vec![],
 					};
 
-					expect_token!(self.next()?, TokenKind::LeftBrace)?;
+					expect_token!(self, self.next()?, TokenKind::LeftBrace)?;
 
 					while !matches!(self.peek()?.kind, TokenKind::RightBrace) {
 						parsed_struct.fields.push(self.parse_var_decl()?);
-						expect_token!(self.next()?, TokenKind::Semicolon)?;
+						expect_token!(self, self.next()?, TokenKind::Semicolon)?;
 					}
 
 					self.next()?; // RightBracket
@@ -244,18 +244,19 @@ impl Parser {
 					self.parsed_structs.push(parsed_struct);
 				}
 				TokenKind::Keyword(Keyword::Import) => {
-					let file_path = expect_token!(self.next()?, TokenKind::StringLiteral(x), x)?;
+					let file_path =
+						expect_token!(self, self.next()?, TokenKind::StringLiteral(x), x)?;
 					self.imported_files.push(file_path);
 				}
 				TokenKind::Attribute(Attribute::CExtern) => {
-					expect_token!(self.next()?, TokenKind::Keyword(Keyword::Fn))?;
+					expect_token!(self, self.next()?, TokenKind::Keyword(Keyword::Fn))?;
 					let mut function = self.parse_function_decl()?;
-					expect_token!(self.next()?, TokenKind::Semicolon)?;
+					expect_token!(self, self.next()?, TokenKind::Semicolon)?;
 					function.attributes.is_c_extern = true;
 					self.functions.push(function);
 				}
 				_ => {
-					error_at_token!(token, "unexpected token outside function, great error btw");
+					error_at_token!(self, token, "Unexpected token at global scope");
 				}
 			}
 		}
@@ -264,11 +265,11 @@ impl Parser {
 
 	/// Parse the very beginning of a function and return it, with an empty scope
 	fn parse_function_decl(&mut self) -> Result<Function, ParserError> {
-		let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
+		let name = expect_token!(self, self.next()?, TokenKind::Identifier(x), x)?;
 
 		let mut function = Function::new(name);
 
-		expect_token!(self.next()?, TokenKind::LeftParen)?;
+		expect_token!(self, self.next()?, TokenKind::LeftParen)?;
 		self.parse_comma_list(|selfish: &mut Self| {
 			function.arguments.push(selfish.parse_var_decl()?);
 			Ok(())
@@ -284,7 +285,7 @@ impl Parser {
 				function.return_type = Type::Name("void".to_string());
 			}
 			_ => {
-				error_at_token!(self.next()?, "function return type");
+				error_at_token!(self, self.next()?, "Expected function return type");
 			}
 		}
 
@@ -310,7 +311,7 @@ impl Parser {
 					break;
 				}
 				_ => {
-					error_at_token!(next, "comma or right parenthesis");
+					error_at_token!(self, next, "Expected comma or end of list");
 				}
 			}
 		}
@@ -319,12 +320,12 @@ impl Parser {
 
 	fn parse_block(&mut self) -> Result<Vec<Statement>, ParserError> {
 		let mut result = Vec::new();
-		expect_token!(self.next()?, TokenKind::LeftBrace)?;
+		expect_token!(self, self.next()?, TokenKind::LeftBrace)?;
 		while !matches!(self.peek()?.kind, TokenKind::RightBrace) {
 			let stmt = self.parse_statement()?;
 			let semi = stmt.requires_semicolon();
 			if semi {
-				expect_token!(self.next()?, TokenKind::Semicolon)?;
+				expect_token!(self, self.next()?, TokenKind::Semicolon)?;
 			}
 			result.push(stmt);
 		}
@@ -339,14 +340,14 @@ impl Parser {
 	}
 
 	fn parse_var_decl(&mut self) -> Result<Variable, ParserError> {
-		let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
-		expect_token!(self.next()?, TokenKind::TypeIndicator)?;
+		let name = expect_token!(self, self.next()?, TokenKind::Identifier(x), x)?;
+		expect_token!(self, self.next()?, TokenKind::TypeIndicator)?;
 		let ty = self.parse_type()?;
 		Ok(Variable { name, ty })
 	}
 
 	fn parse_type(&mut self) -> Result<Type, ParserError> {
-		let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
+		let name = expect_token!(self, self.next()?, TokenKind::Identifier(x), x)?;
 		let ty = Type::Name(name);
 		match self.peek()?.kind {
 			TokenKind::Operator(Operator::Multiply) => {
@@ -399,7 +400,7 @@ impl Parser {
 							else_branch = Some(Box::new(self.parse_statement()?));
 						}
 						_ => {
-							error_at_token!(self.next()?, "if statement or block");
+							error_at_token!(self, self.next()?, "Expected if statement or block");
 						}
 					}
 				}
@@ -452,7 +453,7 @@ impl Parser {
 				Expression::new(ExpressionKind::Cast(ty, left.into()))
 			}
 			TokenKind::Operator(Operator::Dot) => {
-				let name = expect_token!(self.next()?, TokenKind::Identifier(x), x)?;
+				let name = expect_token!(self, self.next()?, TokenKind::Identifier(x), x)?;
 				Expression::new(ExpressionKind::StructAccess(left.into(), name))
 			}
 			TokenKind::LeftParen => {
@@ -469,7 +470,7 @@ impl Parser {
 			}
 			TokenKind::LeftBracket => {
 				let index_exp = self.parse_expression()?;
-				expect_token!(self.next()?, TokenKind::RightBracket)?;
+				expect_token!(self, self.next()?, TokenKind::RightBracket)?;
 				Expression::new(ExpressionKind::ArrayIndex(left.into(), index_exp.into()))
 			}
 			_ => unimplemented!("Unhandled infix token: {:?}", token),
@@ -488,7 +489,7 @@ impl Parser {
 			}
 			TokenKind::LeftParen => {
 				let exp = self.parse_expression()?;
-				expect_token!(self.next()?, TokenKind::RightParen)?;
+				expect_token!(self, self.next()?, TokenKind::RightParen)?;
 				exp
 			}
 			TokenKind::Operator(
@@ -510,7 +511,7 @@ impl Parser {
 					if self.peek()?.kind == TokenKind::Comma {
 						self.next()?;
 					} else {
-						expect_token!(self.peek()?, TokenKind::RightBracket)?;
+						expect_token!(self, self.peek()?.clone(), TokenKind::RightBracket)?;
 					}
 					arr.push(exp);
 				}
@@ -554,5 +555,15 @@ impl Parser {
 			.peek()
 			.map(|x| x.span.clone())
 			.unwrap_or_default()
+	}
+
+	fn error_at_token(&self, token: &Token, message: &str, file: &str, line: u32) -> ! {
+		diagnostics::error_at_span(
+			message,
+			&token.span,
+			&self.input_path,
+			Some((file, line as _)),
+		);
+		std::process::exit(1);
 	}
 }

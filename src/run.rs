@@ -24,7 +24,7 @@ pub fn run<S: AsRef<std::path::Path> + Into<PathBuf> + Clone>(
 	let mut lexer = Lexer::new(contents.chars().peekable());
 	let tokens: Vec<Token> = lexer.iter().collect();
 
-	let mut parser = Parser::new(tokens.into_iter().peekable());
+	let mut parser = Parser::new(tokens.into_iter().peekable(), input_path.clone().into());
 	parser.parse().unwrap();
 
 	let asts = TypeChecker::new(input_path.into()).check(parser).unwrap();
