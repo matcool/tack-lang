@@ -49,10 +49,9 @@ fn error_at_span_desc(
 	};
 	let (line, column) = span_to_line(&contents, span);
 	println!(
-		"{} {} {message} {origin} {:?}",
+		"{} {} {message} {origin}",
 		format!("{}:{}:{}:", path.to_string_lossy(), line, column).bold(),
 		"error:".bright_red().bold(),
-		span
 	);
 	let my_theme = lyneate::Theme {
 		sizing: lyneate::ThemeSizing {

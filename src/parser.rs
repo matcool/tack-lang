@@ -484,7 +484,12 @@ impl Parser {
 				expect_token!(self, self.next()?, TokenKind::RightBracket)?;
 				Expression::new(ExpressionKind::ArrayIndex(left.into(), index_exp.into()))
 			}
-			_ => unimplemented!("Unhandled infix token: {:?}", token),
+			_ => {
+				self.error(token.span, location!())
+					.message("Unexpected token when parsing expression")
+					.build();
+				unreachable!();
+			}
 		})
 	}
 
@@ -533,7 +538,12 @@ impl Parser {
 				let var = self.parse_var_decl()?;
 				Expression::new(ExpressionKind::Declaration(var))
 			}
-			_ => todo!("Unhandled prefix token: {:?}", token),
+			_ => {
+				self.error(token.span, location!())
+					.message("Unexpected token when parsing expression")
+					.build();
+				unreachable!();
+			}
 		})
 	}
 

@@ -260,7 +260,8 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 					.collect();
 				match identifier.as_str() {
 					"c_extern" => TokenKind::Attribute(Attribute::CExtern),
-					_ => panic!("unknown attribute \"{identifier}\""),
+					// TODO: not a great idea but dont have any graceful way to fail
+					_ => TokenKind::Identifier(format!("@{identifier}")),
 				}
 			}
 			ch => {
