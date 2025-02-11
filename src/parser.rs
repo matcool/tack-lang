@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use crate::{
-	ast, diagnostics,
+	ast,
+	diagnostics::ProducesError,
 	lexer::{Attribute, Keyword, Operator, Span, Token, TokenKind},
 };
 
@@ -166,7 +167,8 @@ pub enum ParserError {
 macro_rules! error_at_token {
 	($self:expr, $token:expr, $msg:expr) => {{
 		let token = $token;
-		$self.error_at_token(&token, $msg, file!(), line!())
+		$self.error(token.span, location!()).message($msg).build();
+		unreachable!()
 	}};
 }
 
@@ -551,19 +553,15 @@ impl Parser {
 	}
 
 	fn get_current_span(&mut self) -> Span {
-		self.tokens
-			.peek()
-			.map(|x| x.span.clone())
-			.unwrap_or_default()
+		self.tokens.peek().map(|x| x.span).unwrap_or_default()
 	}
+}
 
-	fn error_at_token(&self, token: &Token, message: &str, file: &str, line: u32) -> ! {
-		diagnostics::error_at_span(
-			message,
-			&token.span,
-			&self.input_path,
-			Some((file, line as _)),
-		);
+impl ProducesError for Parser {
+	fn file_path(&self) -> PathBuf {
+		self.input_path.clone()
+	}
+	fn set_errored(&self) {
 		std::process::exit(1);
 	}
 }

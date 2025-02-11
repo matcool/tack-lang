@@ -1,6 +1,7 @@
 mod ast;
 mod checker;
 mod compiler;
+#[macro_use]
 mod diagnostics;
 mod dump;
 mod lexer;

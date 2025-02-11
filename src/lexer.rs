@@ -67,10 +67,9 @@ pub enum TokenKind {
 	Attribute(Attribute),
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Copy)]
 pub struct Span {
-	pub line: i32,
-	pub column: i32,
+	pub offset: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -81,8 +80,7 @@ pub struct Token {
 
 pub struct Lexer<I: Iterator<Item = char>> {
 	iterator: std::iter::Peekable<I>,
-	line: i32,
-	column: i32,
+	offset: usize,
 }
 
 pub struct LexerIterator<'a, I: Iterator<Item = char>> {
@@ -101,8 +99,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 	pub fn new(iterator: std::iter::Peekable<I>) -> Lexer<I> {
 		Lexer {
 			iterator,
-			line: 1,
-			column: 1,
+			offset: 0,
 		}
 	}
 
@@ -112,15 +109,8 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 
 	fn next(&mut self) -> Option<char> {
 		let c = self.iterator.next();
-		if let Some(c) = c {
-			if c == '\n' {
-				self.column = 1;
-				self.line += 1;
-			} else if c == '\t' {
-				self.column += 4;
-			} else {
-				self.column += 1;
-			}
+		if c.is_some() {
+			self.offset += 1;
 		}
 		c
 	}
@@ -133,8 +123,8 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 		} {}
 		let token = Token {
 			span: Span {
-				line: self.line,
-				column: self.column - 1, // from the self.next() in the while loop before
+				// -1 since we already consumed a character
+				offset: self.offset - 1,
 			},
 			kind: match ch {
 				';' => TokenKind::Semicolon,
