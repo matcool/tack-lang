@@ -172,6 +172,7 @@ pub enum StatementKind {
 #[derive(Debug)]
 pub struct Statement {
 	pub kind: StatementKind,
+	#[allow(unused)]
 	pub span: Span,
 }
 

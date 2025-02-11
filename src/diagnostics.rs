@@ -1,7 +1,4 @@
-use std::{
-	ops::Range,
-	path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use colored::Colorize;
 
