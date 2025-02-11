@@ -104,11 +104,15 @@ pub enum StatementKind {
 #[derive(Debug)]
 pub struct Statement {
 	pub kind: StatementKind,
+	pub span: Span,
 }
 
 impl Statement {
 	fn new(kind: StatementKind) -> Statement {
-		Statement { kind }
+		Statement {
+			kind,
+			span: Default::default(),
+		}
 	}
 
 	fn requires_semicolon(&self) -> bool {
@@ -157,6 +161,7 @@ pub struct Parser {
 	pub parsed_structs: Vec<ParsedStruct>,
 	pub imported_files: Vec<String>,
 	input_path: PathBuf,
+	last_token_span: Span,
 }
 
 #[derive(Debug)]
@@ -200,12 +205,16 @@ impl Parser {
 			parsed_structs: vec![],
 			imported_files: vec![],
 			input_path,
+			last_token_span: Default::default(),
 		}
 	}
 
 	fn next(&mut self) -> Result<Token, ParserError> {
 		match self.tokens.next() {
-			Some(x) => Ok(x),
+			Some(x) => {
+				self.last_token_span = x.span;
+				Ok(x)
+			}
 			None => Err(ParserError::MissingToken),
 		}
 	}
@@ -373,8 +382,9 @@ impl Parser {
 	}
 
 	fn parse_statement(&mut self) -> Result<Statement, ParserError> {
+		let start = self.get_current_span();
 		let token = self.peek()?;
-		match token.kind {
+		let mut stmt = match token.kind {
 			TokenKind::Keyword(Keyword::Return) => {
 				self.next()?; // Return
 				let expr = if matches!(self.peek()?.kind, TokenKind::Semicolon) {
@@ -382,13 +392,13 @@ impl Parser {
 				} else {
 					Some(self.parse_expression()?)
 				};
-				Ok(Statement::new(StatementKind::Return(expr)))
+				Statement::new(StatementKind::Return(expr))
 			}
 			TokenKind::Keyword(Keyword::While) => {
 				self.next()?; // While
 				let condition = self.parse_expression()?;
 				let scope = self.parse_scope()?;
-				Ok(Statement::new(StatementKind::While(scope, condition)))
+				Statement::new(StatementKind::While(scope, condition))
 			}
 			TokenKind::Keyword(Keyword::If) => {
 				self.next()?; // If
@@ -406,14 +416,13 @@ impl Parser {
 						}
 					}
 				}
-				let stmt = Statement::new(StatementKind::If(scope, condition, else_branch));
-				Ok(stmt)
+				Statement::new(StatementKind::If(scope, condition, else_branch))
 			}
-			TokenKind::LeftBrace => Ok(Statement::new(StatementKind::Block(self.parse_scope()?))),
-			_ => Ok(Statement::new(StatementKind::Expression(
-				self.parse_expression()?,
-			))),
-		}
+			TokenKind::LeftBrace => Statement::new(StatementKind::Block(self.parse_scope()?)),
+			_ => Statement::new(StatementKind::Expression(self.parse_expression()?)),
+		};
+		stmt.span = start.extended(self.last_token_span);
+		Ok(stmt)
 	}
 
 	fn get_expression_precedence(token: &Token) -> i32 {
@@ -537,12 +546,11 @@ impl Parser {
 		let token = self.next()?;
 		let left = self.parse_expression_prefix(token)?;
 		let mut result = left;
-		result.span = start;
+		result.span = start.extended(self.last_token_span);
 		while precedence < self.get_next_infix_precedence()? {
-			let start = self.get_current_span();
 			let token = self.next()?;
 			result = self.parse_expression_infix(token, result)?;
-			result.span = start;
+			result.span = start.extended(self.last_token_span);
 		}
 		Ok(result)
 	}

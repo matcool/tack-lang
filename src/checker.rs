@@ -189,25 +189,25 @@ impl FunctionTypeChecker<'_> {
 		match parsed.kind {
 			parser::StatementKind::Expression(expr) => {
 				let expr = self.check_expression(expr);
-				Statement::new(StatementKind::Expression(expr))
+				Statement::new(StatementKind::Expression(expr), parsed.span)
 			}
 			parser::StatementKind::Return(expr_opt) => {
 				if self.function.return_type == BUILTIN_TYPE_VOID {
-					if expr_opt.is_some() {
+					if let Some(expr) = expr_opt {
 						// TODO: should prob allow it as long as u cast to void
 						// or maybe allow implicit casting to void
-						self.error(Default::default(), location!())
+						self.error(expr.span, location!())
 							.message("Unexpected return value in void function")
 							.build();
 					}
-					Statement::new(StatementKind::Return(None))
+					Statement::new(StatementKind::Return(None), parsed.span)
 				} else {
 					let Some(expr) = expr_opt else {
-						self.error(Default::default(), location!())
+						self.error(parsed.span, location!())
 							.message("Expect return value")
 							.build();
 						// TODO: maybe some dummy statement kind for this?
-						return Statement::new(StatementKind::Return(None));
+						return Statement::new(StatementKind::Return(None), parsed.span);
 					};
 					let mut expr = self.check_expression(expr);
 					let ty = self.promote_int_literal_into(&mut expr, self.function.return_type);
@@ -217,7 +217,7 @@ impl FunctionTypeChecker<'_> {
 							.build_type_mismatch(expr.value_type, self.function.return_type);
 					}
 					expr.cast_if_reference();
-					Statement::new(StatementKind::Return(Some(expr)))
+					Statement::new(StatementKind::Return(Some(expr)), parsed.span)
 				}
 			}
 			parser::StatementKind::If(parsed_scope, condition, else_stmt) => {
@@ -231,11 +231,14 @@ impl FunctionTypeChecker<'_> {
 				let if_scope = self.check_scope(parsed_scope);
 				let else_stmt = else_stmt.map(|stmt| Box::new(self.check_statement(*stmt)));
 
-				Statement::new(StatementKind::If(if_scope, condition, else_stmt))
+				Statement::new(
+					StatementKind::If(if_scope, condition, else_stmt),
+					parsed.span,
+				)
 			}
 			parser::StatementKind::Block(parsed_scope) => {
 				let scope = self.check_scope(parsed_scope);
-				Statement::new(StatementKind::Block(scope))
+				Statement::new(StatementKind::Block(scope), parsed.span)
 			}
 			parser::StatementKind::While(parsed_scope, condition) => {
 				let mut condition = self.check_expression(condition);
@@ -246,7 +249,7 @@ impl FunctionTypeChecker<'_> {
 						.build_type_mismatch(condition.value_type, BUILTIN_TYPE_BOOL);
 				}
 				let scope = self.check_scope(parsed_scope);
-				Statement::new(StatementKind::While(scope, condition))
+				Statement::new(StatementKind::While(scope, condition), parsed.span)
 			}
 		}
 	}
@@ -390,7 +393,7 @@ impl FunctionTypeChecker<'_> {
 				if child.value_type != BUILTIN_TYPE_INT_LITERAL
 					&& !self.ast.is_integer(child.value_type)
 				{
-					self.error(child.span, location!())
+					self.error(parsed.span, location!())
 						.message("Negation must be done on integers")
 						.build_type_mismatch(child.value_type, BUILTIN_TYPE_INT_LITERAL);
 				}

@@ -165,7 +165,6 @@ impl Compiler<'_> {
 				self.compile_scope(scope);
 				self.body += "}\n";
 			}
-			k => todo!("{k:?}"),
 		}
 	}
 

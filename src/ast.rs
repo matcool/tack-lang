@@ -172,11 +172,12 @@ pub enum StatementKind {
 #[derive(Debug)]
 pub struct Statement {
 	pub kind: StatementKind,
+	pub span: Span,
 }
 
 impl Statement {
-	pub fn new(kind: StatementKind) -> Statement {
-		Statement { kind }
+	pub fn new(kind: StatementKind, span: Span) -> Statement {
+		Statement { kind, span }
 	}
 }
 
@@ -299,6 +300,7 @@ impl Type {
 }
 
 #[derive(Default)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct AST {
 	pub functions: Vec<Function>,
 	pub types: Vec<Type>,

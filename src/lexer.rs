@@ -69,7 +69,17 @@ pub enum TokenKind {
 
 #[derive(Debug, Clone, Default, Copy)]
 pub struct Span {
-	pub offset: usize,
+	pub start: usize,
+	pub end: usize,
+}
+
+impl Span {
+	pub fn extended(self, other: Span) -> Span {
+		Span {
+			start: self.start.min(other.start),
+			end: self.end.max(other.end),
+		}
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -121,166 +131,165 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 			ch = self.next()?;
 			ch.is_whitespace()
 		} {}
-		let token = Token {
-			span: Span {
-				// -1 since we already consumed a character
-				offset: self.offset - 1,
-			},
-			kind: match ch {
-				';' => TokenKind::Semicolon,
-				'(' => TokenKind::LeftParen,
-				')' => TokenKind::RightParen,
-				'{' => TokenKind::LeftBrace,
-				'}' => TokenKind::RightBrace,
-				'[' => TokenKind::LeftBracket,
-				']' => TokenKind::RightBracket,
-				':' => TokenKind::TypeIndicator,
-				',' => TokenKind::Comma,
-				'.' => TokenKind::Operator(Operator::Dot),
-				'+' => TokenKind::Operator(Operator::Add),
-				'-' => TokenKind::Operator(Operator::Sub),
-				'*' => TokenKind::Operator(Operator::Multiply),
-				'%' => TokenKind::Operator(Operator::Mod),
-				'>' => TokenKind::Operator(match self.peek()? {
-					'>' => {
-						self.next()?;
-						Operator::BitShiftRight
-					}
-					'=' => {
-						self.next()?;
-						Operator::GreaterThanEq
-					}
-					_ => {
-						self.next()?;
-						Operator::GreaterThan
-					}
-				}),
-				'<' => TokenKind::Operator(match self.peek()? {
-					'<' => {
-						self.next()?;
-						Operator::BitShiftLeft
-					}
-					'=' => {
-						self.next()?;
-						Operator::LessThanEq
-					}
-					_ => {
-						self.next()?;
-						Operator::LessThan
-					}
-				}),
+		let start = self.offset - 1;
+		let kind = match ch {
+			';' => TokenKind::Semicolon,
+			'(' => TokenKind::LeftParen,
+			')' => TokenKind::RightParen,
+			'{' => TokenKind::LeftBrace,
+			'}' => TokenKind::RightBrace,
+			'[' => TokenKind::LeftBracket,
+			']' => TokenKind::RightBracket,
+			':' => TokenKind::TypeIndicator,
+			',' => TokenKind::Comma,
+			'.' => TokenKind::Operator(Operator::Dot),
+			'+' => TokenKind::Operator(Operator::Add),
+			'-' => TokenKind::Operator(Operator::Sub),
+			'*' => TokenKind::Operator(Operator::Multiply),
+			'%' => TokenKind::Operator(Operator::Mod),
+			'>' => TokenKind::Operator(match self.peek()? {
+				'>' => {
+					self.next()?;
+					Operator::BitShiftRight
+				}
 				'=' => {
-					if self.peek()? == '=' {
-						self.next()?;
-						TokenKind::Operator(Operator::Equals)
-					} else {
-						TokenKind::Operator(Operator::Assign)
-					}
+					self.next()?;
+					Operator::GreaterThanEq
 				}
-				'!' => {
-					if self.peek()? == '=' {
-						self.next()?;
-						TokenKind::Operator(Operator::NotEquals)
-					} else {
-						TokenKind::Operator(Operator::Not)
-					}
+				_ => {
+					self.next()?;
+					Operator::GreaterThan
 				}
-				'&' => {
-					if self.peek()? == '&' {
-						self.next()?;
-						TokenKind::Operator(Operator::And)
-					} else {
-						TokenKind::Operator(Operator::BitAnd)
-					}
+			}),
+			'<' => TokenKind::Operator(match self.peek()? {
+				'<' => {
+					self.next()?;
+					Operator::BitShiftLeft
 				}
-				'|' => {
-					if self.peek()? == '|' {
-						self.next()?;
-						TokenKind::Operator(Operator::Or)
-					} else {
-						TokenKind::Operator(Operator::BitOr)
-					}
+				'=' => {
+					self.next()?;
+					Operator::LessThanEq
 				}
-				'/' => {
-					if self.peek()? == '/' {
-						self.take_while(|c| *c != '\n').for_each(drop);
-						// use recursion to skip chars inside the match
-						return self.get_token();
-					} else {
-						TokenKind::Operator(Operator::Divide)
-					}
+				_ => {
+					self.next()?;
+					Operator::LessThan
 				}
-				'0'..='9' => {
-					if ch == '0' && self.peek().map(|c| c == 'x').unwrap_or(false) {
-						self.next();
-						let number: String =
-							self.peeking_take_while(|c| c.is_ascii_hexdigit()).collect();
-
-						TokenKind::Number(i64::from_str_radix(number.as_str(), 16).unwrap())
-					} else {
-						let mut number: String =
-							self.peeking_take_while(|c| c.is_ascii_digit()).collect();
-						// scary...
-						number.insert(0, ch);
-						// TODO: make this function return result
-						TokenKind::Number(number.as_str().parse().unwrap())
-					}
+			}),
+			'=' => {
+				if self.peek()? == '=' {
+					self.next()?;
+					TokenKind::Operator(Operator::Equals)
+				} else {
+					TokenKind::Operator(Operator::Assign)
 				}
-				'"' => {
-					let mut str = String::new();
-					while self.peek()? != '"' {
-						let c = self.next()?;
-						if c == '\\' {
-							match self.next()? {
-								'n' => str.push('\n'),
-								't' => str.push('\t'),
-								'r' => str.push('\r'),
-								'0' => str.push('\0'),
-								'"' => str.push('"'),
-								'\\' => str.push('\\'),
-								// maybe add \x hex hex
-								esc => panic!("invalid string escape {esc}"),
-							}
-						} else {
-							str.push(c);
-						}
-					}
+			}
+			'!' => {
+				if self.peek()? == '=' {
+					self.next()?;
+					TokenKind::Operator(Operator::NotEquals)
+				} else {
+					TokenKind::Operator(Operator::Not)
+				}
+			}
+			'&' => {
+				if self.peek()? == '&' {
+					self.next()?;
+					TokenKind::Operator(Operator::And)
+				} else {
+					TokenKind::Operator(Operator::BitAnd)
+				}
+			}
+			'|' => {
+				if self.peek()? == '|' {
+					self.next()?;
+					TokenKind::Operator(Operator::Or)
+				} else {
+					TokenKind::Operator(Operator::BitOr)
+				}
+			}
+			'/' => {
+				if self.peek()? == '/' {
+					self.take_while(|c| *c != '\n').for_each(drop);
+					// use recursion to skip chars inside the match
+					return self.get_token();
+				} else {
+					TokenKind::Operator(Operator::Divide)
+				}
+			}
+			'0'..='9' => {
+				if ch == '0' && self.peek().map(|c| c == 'x').unwrap_or(false) {
 					self.next();
-					TokenKind::StringLiteral(str)
+					let number: String =
+						self.peeking_take_while(|c| c.is_ascii_hexdigit()).collect();
+
+					TokenKind::Number(i64::from_str_radix(number.as_str(), 16).unwrap())
+				} else {
+					let mut number: String =
+						self.peeking_take_while(|c| c.is_ascii_digit()).collect();
+					// scary...
+					number.insert(0, ch);
+					// TODO: make this function return result
+					TokenKind::Number(number.as_str().parse().unwrap())
 				}
-				'@' => {
-					let identifier: String = self
-						.peeking_take_while(|c| c.is_alphanumeric() || c == &'_')
-						.collect();
-					match identifier.as_str() {
-						"c_extern" => TokenKind::Attribute(Attribute::CExtern),
-						_ => panic!("unknown attribute \"{identifier}\""),
+			}
+			'"' => {
+				let mut str = String::new();
+				while self.peek()? != '"' {
+					let c = self.next()?;
+					if c == '\\' {
+						match self.next()? {
+							'n' => str.push('\n'),
+							't' => str.push('\t'),
+							'r' => str.push('\r'),
+							'0' => str.push('\0'),
+							'"' => str.push('"'),
+							'\\' => str.push('\\'),
+							// maybe add \x hex hex
+							esc => panic!("invalid string escape {esc}"),
+						}
+					} else {
+						str.push(c);
 					}
 				}
-				ch => {
-					let mut identifier: String = self
-						.peeking_take_while(|c| c.is_alphanumeric() || c == &'_')
-						.collect();
-					// not very elegant :(
-					identifier.insert(0, ch);
-					match identifier.as_str() {
-						"let" => TokenKind::Keyword(Keyword::Let),
-						"fn" => TokenKind::Keyword(Keyword::Fn),
-						"true" => TokenKind::Keyword(Keyword::True),
-						"false" => TokenKind::Keyword(Keyword::False),
-						"return" => TokenKind::Keyword(Keyword::Return),
-						"if" => TokenKind::Keyword(Keyword::If),
-						"else" => TokenKind::Keyword(Keyword::Else),
-						"while" => TokenKind::Keyword(Keyword::While),
-						"struct" => TokenKind::Keyword(Keyword::Struct),
-						"as" => TokenKind::Operator(Operator::As),
-						"import" => TokenKind::Keyword(Keyword::Import),
-						_ => TokenKind::Identifier(identifier),
-					}
+				self.next();
+				TokenKind::StringLiteral(str)
+			}
+			'@' => {
+				let identifier: String = self
+					.peeking_take_while(|c| c.is_alphanumeric() || c == &'_')
+					.collect();
+				match identifier.as_str() {
+					"c_extern" => TokenKind::Attribute(Attribute::CExtern),
+					_ => panic!("unknown attribute \"{identifier}\""),
 				}
-			},
+			}
+			ch => {
+				let mut identifier: String = self
+					.peeking_take_while(|c| c.is_alphanumeric() || c == &'_')
+					.collect();
+				// not very elegant :(
+				identifier.insert(0, ch);
+				match identifier.as_str() {
+					"let" => TokenKind::Keyword(Keyword::Let),
+					"fn" => TokenKind::Keyword(Keyword::Fn),
+					"true" => TokenKind::Keyword(Keyword::True),
+					"false" => TokenKind::Keyword(Keyword::False),
+					"return" => TokenKind::Keyword(Keyword::Return),
+					"if" => TokenKind::Keyword(Keyword::If),
+					"else" => TokenKind::Keyword(Keyword::Else),
+					"while" => TokenKind::Keyword(Keyword::While),
+					"struct" => TokenKind::Keyword(Keyword::Struct),
+					"as" => TokenKind::Operator(Operator::As),
+					"import" => TokenKind::Keyword(Keyword::Import),
+					_ => TokenKind::Identifier(identifier),
+				}
+			}
 		};
-		Some(token)
+		let end = self.offset;
+		Some(Token {
+			kind,
+			span: Span { start, end },
+		})
 	}
 
 	pub fn iter(&mut self) -> LexerIterator<I> {

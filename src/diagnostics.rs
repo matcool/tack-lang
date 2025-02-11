@@ -7,22 +7,10 @@ use colored::Colorize;
 
 use crate::lexer::Span;
 
-// TODO: store ranges instead
-fn span_to_offset(contents: &str, span: Span) -> Range<usize> {
-	let mut offset_end = span.offset + 1;
-	for c in contents.chars().skip(span.offset + 1) {
-		if !c.is_alphanumeric() {
-			break;
-		}
-		offset_end += 1;
-	}
-	span.offset..offset_end
-}
-
 fn span_to_line(contents: &str, span: Span) -> (usize, usize) {
 	let mut line = 1;
 	let mut column = 1;
-	for c in contents.chars().take(span.offset) {
+	for c in contents.chars().take(span.start) {
 		if c == '\n' {
 			line += 1;
 			column = 1;
@@ -40,14 +28,14 @@ macro_rules! location {
 	};
 }
 
-pub type DiagLocation = Option<(&'static str, u32)>;
+pub type ErrorOrigin = Option<(&'static str, u32)>;
 
-pub fn error_at_span_desc(
+fn error_at_span_desc(
 	message: &str,
 	description: &str,
 	span: Span,
 	path: &Path,
-	origin: DiagLocation,
+	origin: ErrorOrigin,
 ) {
 	let Ok(contents) = std::fs::read_to_string(path) else {
 		eprintln!(
@@ -64,11 +52,11 @@ pub fn error_at_span_desc(
 	};
 	let (line, column) = span_to_line(&contents, span);
 	println!(
-		"{} {} {message} {origin}",
+		"{} {} {message} {origin} {:?}",
 		format!("{}:{}:{}:", path.to_string_lossy(), line, column).bold(),
-		"error:".bright_red().bold()
+		"error:".bright_red().bold(),
+		span
 	);
-	let range = span_to_offset(&contents, span);
 	let my_theme = lyneate::Theme {
 		sizing: lyneate::ThemeSizing {
 			underline_spacing: 0,
@@ -78,13 +66,17 @@ pub fn error_at_span_desc(
 	};
 	lyneate::Report::new_char_spanned(
 		&contents,
-		[(range, description.italic().to_string(), (255, 100, 100))],
+		[(
+			span.start..span.end,
+			description.italic().to_string(),
+			(255, 100, 100),
+		)],
 	)
 	.with_theme(my_theme)
 	.display();
 }
 
-pub fn error_at_span(message: &str, span: Span, path: &Path, origin: DiagLocation) {
+fn error_at_span(message: &str, span: Span, path: &Path, origin: ErrorOrigin) {
 	error_at_span_desc(message, "Here", span, path, origin)
 }
 
@@ -92,9 +84,9 @@ pub trait ProducesError {
 	fn file_path(&self) -> PathBuf;
 	fn set_errored(&self) {}
 
-	fn error(&self, span: Span, origin: DiagLocation) -> ErrorBuilder<Self> {
+	fn error(&self, span: Span, origin: ErrorOrigin) -> ErrorBuilder<Self> {
 		ErrorBuilder {
-			this: &self,
+			this: self,
 			span,
 			origin,
 			data: Default::default(),
@@ -112,7 +104,7 @@ struct ErrorBuilderData {
 pub struct ErrorBuilder<'a, T: ?Sized> {
 	pub this: &'a T,
 	span: Span,
-	origin: DiagLocation,
+	origin: ErrorOrigin,
 	data: ErrorBuilderData,
 }
 
