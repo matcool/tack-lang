@@ -47,6 +47,8 @@ fn error_at_span_desc(
 			.italic(),
 		None => "".into(),
 	};
+	// work around lyneate bug, for now
+	let contents = contents.replace('\t', " ");
 	let (line, column) = span_to_line(&contents, span);
 	println!(
 		"{} {} {message} {origin}",
