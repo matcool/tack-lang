@@ -1,0 +1,34 @@
+{
+	"name": "tack-lang",
+	"displayName": "Tack Language Support",
+	"description": "Support for Tack",
+	"publisher": "mat",
+	"version": "0.1.0",
+	"engines": {
+		"vscode": "^1.68.0"
+	},
+	"categories": [
+		"Programming Languages"
+	],
+	"contributes": {
+		"languages": [
+			{
+				"id": "tack",
+				"aliases": [
+					"Tack"
+				],
+				"extensions": [
+					".tack"
+				],
+				"configuration": "./language-configuration.json"
+			}
+		],
+		"grammars": [
+			{
+				"language": "tack",
+				"scopeName": "source.tack",
+				"path": "./syntaxes/tack.tmLanguage.json"
+			}
+		]
+	}
+}

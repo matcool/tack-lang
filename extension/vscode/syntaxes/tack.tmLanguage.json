@@ -1,0 +1,117 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Tack",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#constants"
+		},
+		{
+			"include": "#types"
+		},
+		{
+			"include": "#identifiers"
+		},
+		{
+			"include": "#operators"
+		},
+		{
+			"include": "#comments"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.tack",
+					"match": "\\b(if|else|while|return)\\b"
+				},
+				{
+					"name": "storage.type.tack",
+					"match": "\\b(let|struct)\\b"
+				},
+				{
+					"name": "keyword.other.tack",
+					"match": "\\b(fn|let|struct|as)\\b"
+				},
+				{
+					"name": "keyword.other.attribute.tack",
+					"match": "@([a-zA-Z_]\\w*)\\b"
+				}
+			]
+		},
+		"constants": {
+			"patterns": [
+				{
+					"name": "constant.language.bool.tack",
+					"match": "\\b(true|false)\\b"
+				},
+				{
+					"name": "constant.numeric.tack",
+					"match": "\\b(0x[0-9a-fA-F]+|\\d+)\\b"
+				}
+			]
+		},
+		"types": {
+			"patterns": [
+				{
+					"name": "entity.name.type.tack",
+					"match": "\\b(i32|u8|uptr|str|bool|void)\\b"
+				},
+				{
+					"name": "entity.name.type.struct.tack",
+					"match": "(?<=struct\\s+)([a-zA-Z_]\\w*)"
+				},
+				{
+					"name": "entity.name.type.variable.tack",
+					"match": "(?<=[a-zA-Z_]\\w*\\s*:\\s*)([a-zA-Z_]\\w*)"
+				}
+			]
+		},
+		"identifiers": {
+			"patterns": [
+				{
+					"name": "entity.name.function.tack",
+					"match": "\\b([a-zA-Z_]\\w*)\\("
+				},
+				{
+					"name": "variable.other.tack",
+					"match": "\\b([a-zA-Z_]\\w*)\\b"
+				}
+			]
+		},
+		"operators": {
+			"patterns": [
+				{
+					"name": "keyword.operator.tack",
+					"match": "(=)"
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.tack",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.tack",
+					"match": "\\\\."
+				}
+			]
+		},
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.double-slash.tack",
+					"match": "(\/\/.*)$"
+				}
+			]
+		}
+	},
+	"scopeName": "source.tack"
+}
