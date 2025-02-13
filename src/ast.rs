@@ -109,6 +109,18 @@ pub struct Variable {
 	pub name: String,
 	pub unique_id: usize,
 	pub ty: TypeRef,
+	pub span: Span,
+}
+
+impl Variable {
+	fn new_builtin(name: String, ty: TypeRef) -> Self {
+		Self {
+			name,
+			ty,
+			unique_id: 0,
+			span: Default::default(),
+		}
+	}
 }
 
 #[derive(Debug, Display)]
@@ -347,16 +359,8 @@ impl AST {
 		self.add_type(Type::Struct(StructType {
 			name: "str".into(),
 			fields: vec![
-				Variable {
-					name: "data".into(),
-					unique_id: 0,
-					ty: u8_ptr,
-				},
-				Variable {
-					name: "size".into(),
-					unique_id: 0,
-					ty: BUILTIN_TYPE_I32,
-				},
+				Variable::new_builtin("data".into(), u8_ptr),
+				Variable::new_builtin("size".into(), BUILTIN_TYPE_I32),
 			],
 		}));
 	}
@@ -365,11 +369,7 @@ impl AST {
 		let void_ptr = self.find_type_or_add(Type::Pointer(BUILTIN_TYPE_VOID));
 		self.functions.push(Function {
 			name: "tack_malloc".into(),
-			arguments: vec![Variable {
-				name: "size".into(),
-				ty: BUILTIN_TYPE_UPTR,
-				unique_id: 0,
-			}],
+			arguments: vec![Variable::new_builtin("size".into(), BUILTIN_TYPE_UPTR)],
 			return_type: void_ptr,
 			attributes: FunctionAttributes {
 				is_c_extern: true,
@@ -379,11 +379,7 @@ impl AST {
 		});
 		self.functions.push(Function {
 			name: "tack_free".into(),
-			arguments: vec![Variable {
-				name: "ptr".into(),
-				ty: void_ptr,
-				unique_id: 0,
-			}],
+			arguments: vec![Variable::new_builtin("ptr".into(), void_ptr)],
 			return_type: BUILTIN_TYPE_VOID,
 			attributes: FunctionAttributes {
 				is_c_extern: true,
@@ -394,21 +390,9 @@ impl AST {
 		self.functions.push(Function {
 			name: "tack_memcpy".into(),
 			arguments: vec![
-				Variable {
-					name: "dst".into(),
-					ty: void_ptr,
-					unique_id: 0,
-				},
-				Variable {
-					name: "src".into(),
-					ty: void_ptr,
-					unique_id: 0,
-				},
-				Variable {
-					name: "size".into(),
-					ty: BUILTIN_TYPE_UPTR,
-					unique_id: 0,
-				},
+				Variable::new_builtin("dst".into(), void_ptr),
+				Variable::new_builtin("src".into(), void_ptr),
+				Variable::new_builtin("size".into(), BUILTIN_TYPE_UPTR),
 			],
 			return_type: void_ptr,
 			attributes: FunctionAttributes {
@@ -419,11 +403,7 @@ impl AST {
 		});
 		self.functions.push(Function {
 			name: "tack_print".into(),
-			arguments: vec![Variable {
-				name: "str".into(),
-				ty: BUILTIN_TYPE_STR,
-				unique_id: 0,
-			}],
+			arguments: vec![Variable::new_builtin("str".into(), BUILTIN_TYPE_STR)],
 			return_type: BUILTIN_TYPE_VOID,
 			attributes: FunctionAttributes {
 				is_c_extern: true,

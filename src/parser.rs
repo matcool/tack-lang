@@ -60,6 +60,7 @@ impl Operator {
 pub struct Variable {
 	pub name: String,
 	pub ty: Type,
+	pub span: Span,
 }
 
 #[derive(Debug)]
@@ -353,10 +354,12 @@ impl Parser {
 	}
 
 	fn parse_var_decl(&mut self) -> Result<Variable, ParserError> {
+		let start = self.get_current_span();
 		let name = expect_token!(self, self.next()?, TokenKind::Identifier(x), x)?;
 		expect_token!(self, self.next()?, TokenKind::TypeIndicator)?;
 		let ty = self.parse_type()?;
-		Ok(Variable { name, ty })
+		let span = start.extended(self.last_token_span);
+		Ok(Variable { name, ty, span })
 	}
 
 	fn parse_type(&mut self) -> Result<Type, ParserError> {

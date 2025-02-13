@@ -1,6 +1,6 @@
 use std::{
 	fmt::Debug,
-	ops::{Deref, DerefMut},
+	ops::{Deref, DerefMut, Range},
 };
 
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq)]
@@ -15,6 +15,11 @@ impl Span {
 			start: self.start.min(other.start),
 			end: self.end.max(other.end),
 		}
+	}
+}
+impl Into<Range<usize>> for Span {
+	fn into(self) -> Range<usize> {
+		self.start..self.end
 	}
 }
 

@@ -46,7 +46,8 @@ impl<T: ProducesErrorWithAST> ErrorBuilder<'_, T> {
 		self.description("Expected reference").build();
 	}
 	fn build_variable_not_found(self, name: &str) {
-		self.message(format!("Variable {name} not found")).build();
+		self.message(format!("Variable \"{name}\" not found"))
+			.build();
 	}
 }
 
@@ -122,10 +123,12 @@ impl TypeChecker {
 		for parsed_struct in parser.parsed_structs {
 			let mut fields: Vec<Variable> = vec![];
 			for field in parsed_struct.fields {
-				if fields.iter().any(|f| f.name == field.name) {
+				if let Some(existing_field) = fields.iter().find(|f| f.name == field.name) {
 					// TODO: show the other one
-					self.error(Default::default(), location!())
+					self.error(field.span, location!())
 						.message("Duplicate field names")
+						.description(format!("Re-definition of \"{}\"", field.name))
+						.extra(existing_field.span, "First declared here")
 						.build();
 					continue;
 				}
@@ -218,6 +221,7 @@ impl AST {
 			name: parsed.name.clone(),
 			unique_id: 0,
 			ty: self.check_parsed_type(parsed.ty),
+			span: parsed.span,
 		}
 	}
 }
@@ -731,7 +735,7 @@ impl FunctionTypeChecker<'_> {
 					)
 				} else {
 					self.error(parsed.span, location!())
-						.message(format!("Function {func_name} not found"))
+						.message(format!("Function \"{func_name}\" not found"))
 						.build();
 					dummy_expr()
 				}

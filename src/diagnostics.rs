@@ -27,12 +27,13 @@ macro_rules! location {
 
 pub type ErrorOrigin = Option<(&'static str, u32)>;
 
-fn error_at_span_desc(
+fn error_at_span(
 	message: &str,
-	description: &str,
+	description: Option<&str>,
 	span: Span,
 	path: &Path,
 	origin: ErrorOrigin,
+	extras: &[(Span, String)],
 ) {
 	let Ok(contents) = std::fs::read_to_string(path) else {
 		eprintln!(
@@ -65,17 +66,19 @@ fn error_at_span_desc(
 	lyneate::Report::new_char_spanned(
 		&contents,
 		[(
-			span.start..span.end,
-			description.italic().to_string(),
+			span.into(),
+			description.unwrap_or("Here").italic().to_string(),
 			(255, 100, 100),
-		)],
+		)]
+		.into_iter()
+		.chain(
+			extras
+				.iter()
+				.map(|(span, msg)| ((*span).into(), msg.italic().to_string(), (150, 230, 255))),
+		),
 	)
 	.with_theme(my_theme)
 	.display();
-}
-
-fn error_at_span(message: &str, span: Span, path: &Path, origin: ErrorOrigin) {
-	error_at_span_desc(message, "Here", span, path, origin)
 }
 
 pub trait ProducesError {
@@ -96,6 +99,7 @@ pub trait ProducesError {
 struct ErrorBuilderData {
 	message: String,
 	description: Option<String>,
+	extras: Vec<(Span, String)>,
 }
 
 #[must_use]
@@ -117,23 +121,20 @@ impl<T: ProducesError> ErrorBuilder<'_, T> {
 		self
 	}
 
+	pub fn extra<S: ToString>(mut self, span: Span, message: S) -> Self {
+		self.data.extras.push((span, message.to_string()));
+		self
+	}
+
 	pub fn build(self) {
-		if let Some(description) = self.data.description {
-			error_at_span_desc(
-				&self.data.message,
-				&description,
-				self.span,
-				&self.this.file_path(),
-				self.origin,
-			)
-		} else {
-			error_at_span(
-				&self.data.message,
-				self.span,
-				&self.this.file_path(),
-				self.origin,
-			)
-		}
+		error_at_span(
+			&self.data.message,
+			self.data.description.as_deref(),
+			self.span,
+			&self.this.file_path(),
+			self.origin,
+			&self.data.extras,
+		);
 		self.this.set_errored();
 	}
 }
