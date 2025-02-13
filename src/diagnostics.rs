@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use colored::Colorize;
 
-use crate::lexer::Span;
+use crate::span::Span;
 
 fn span_to_line(contents: &str, span: Span) -> (usize, usize) {
 	let mut line = 1;

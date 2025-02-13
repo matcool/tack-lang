@@ -8,7 +8,7 @@ use std::{
 use itertools::Itertools;
 use strum_macros::Display;
 
-use crate::lexer::{Operator, Span};
+use crate::{lexer::Operator, span::Span};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum BuiltInType {

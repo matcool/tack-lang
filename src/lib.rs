@@ -7,3 +7,4 @@ mod dump;
 mod lexer;
 mod parser;
 pub mod run;
+mod span;

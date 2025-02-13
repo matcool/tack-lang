@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use crate::{
 	ast,
 	diagnostics::ProducesError,
-	lexer::{Attribute, Keyword, Operator, Span, Token, TokenKind},
+	lexer::{Attribute, Keyword, Operator, Token, TokenKind},
+	span::Span,
 };
 
 #[derive(Debug, Clone)]

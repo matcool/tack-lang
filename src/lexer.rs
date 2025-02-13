@@ -1,5 +1,7 @@
 use itertools::{Itertools, PeekingNext};
 
+use crate::span::Span;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Keyword {
 	Fn,
@@ -65,21 +67,6 @@ pub enum TokenKind {
 	Comma,
 	StringLiteral(String),
 	Attribute(Attribute),
-}
-
-#[derive(Debug, Clone, Default, Copy)]
-pub struct Span {
-	pub start: usize,
-	pub end: usize,
-}
-
-impl Span {
-	pub fn extended(self, other: Span) -> Span {
-		Span {
-			start: self.start.min(other.start),
-			end: self.end.max(other.end),
-		}
-	}
 }
 
 #[derive(Debug, Clone)]
