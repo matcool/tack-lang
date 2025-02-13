@@ -13,7 +13,7 @@ use crate::{
 		BUILTIN_TYPE_INT_LITERAL, BUILTIN_TYPE_STR, BUILTIN_TYPE_VOID,
 	},
 	diagnostics::{ErrorBuilder, ProducesError},
-	lexer::Operator,
+	lexer::{Lexer, Operator},
 	location,
 	parser::{self, Parser},
 };
@@ -66,6 +66,59 @@ impl TypeChecker {
 	pub fn check(mut self, parser: Parser) -> Result<Vec<AST>, ()> {
 		let mut asts = Vec::new();
 
+		// check imported files
+		for imported_file in &parser.imported_files {
+			let imported_path = self
+				.file_path
+				.parent()
+				.unwrap_or_else(|| panic!("invalid path?"))
+				.join(imported_file);
+
+			let Ok(contents) = std::fs::read_to_string(imported_path.clone()) else {
+				self.error(Default::default(), location!())
+					.message(format!("Imported file {imported_file} could not be found"))
+					.build();
+				continue;
+			};
+
+			let mut lexer = Lexer::new(contents.chars().peekable());
+			let tokens: Vec<_> = lexer.iter().collect();
+
+			let mut parser = Parser::new(tokens.into_iter().peekable(), imported_path.clone());
+			parser.parse().unwrap();
+
+			let checker = TypeChecker::new(imported_path);
+			let i = asts.len();
+			asts.extend(checker.check(parser).unwrap());
+			let new_ast = &asts[i];
+
+			let clone_type = |new_ast: &mut AST, old_ast: &AST, type_ref: TypeRef| {
+				new_ast.find_type_or_add(old_ast.get_type(type_ref).clone())
+			};
+
+			for function in &new_ast.functions {
+				if function.is_external() {
+					continue;
+				}
+				let mut imported_func = function.clone();
+				imported_func.attributes.is_extern = true;
+				for arg in &mut imported_func.arguments {
+					arg.ty = clone_type(&mut self.ast, new_ast, arg.ty);
+				}
+				imported_func.return_type =
+					clone_type(&mut self.ast, new_ast, imported_func.return_type);
+				self.ast.functions.push(imported_func);
+			}
+
+			// adds structs that arent mentioned in functions
+			for ty in &new_ast.types {
+				if self.ast.find_type(|t| t == &ty).is_none() {
+					self.ast.add_type(ty.clone());
+				}
+			}
+		}
+
+		// check structs
 		for parsed_struct in parser.parsed_structs {
 			let mut fields: Vec<Variable> = vec![];
 			for field in parsed_struct.fields {
@@ -84,6 +137,7 @@ impl TypeChecker {
 			}));
 		}
 
+		// check functions
 		for function in parser.functions {
 			let function = self.check_function(function);
 			self.ast.functions.push(function);
@@ -665,7 +719,7 @@ impl FunctionTypeChecker<'_> {
 						let ty = self.promote_int_literal_into(exp, arg.ty);
 						if ty != arg.ty {
 							self.error(exp.span, location!())
-								.message("Idk")
+								.message("Function call argument type does not match")
 								.build_type_mismatch(ty, arg.ty);
 						}
 					}

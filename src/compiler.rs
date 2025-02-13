@@ -106,7 +106,7 @@ impl Compiler<'_> {
 			function.name
 		);
 
-		if function.attributes.is_c_extern {
+		if function.is_external() {
 			output += ";\n";
 		} else {
 			output += " {\n";

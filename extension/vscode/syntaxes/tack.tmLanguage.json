@@ -37,7 +37,7 @@
 				},
 				{
 					"name": "keyword.other.tack",
-					"match": "\\b(fn|let|struct|as)\\b"
+					"match": "\\b(fn|let|struct|as|import)\\b"
 				},
 				{
 					"name": "keyword.other.attribute.tack",

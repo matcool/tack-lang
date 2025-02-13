@@ -258,6 +258,7 @@ impl Parser {
 					let file_path =
 						expect_token!(self, self.next()?, TokenKind::StringLiteral(x), x)?;
 					self.imported_files.push(file_path);
+					expect_token!(self, self.next()?, TokenKind::Semicolon)?;
 				}
 				TokenKind::Attribute(Attribute::CExtern) => {
 					expect_token!(self, self.next()?, TokenKind::Keyword(Keyword::Fn))?;

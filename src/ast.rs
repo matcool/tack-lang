@@ -259,6 +259,7 @@ impl std::fmt::Debug for Scope {
 #[derive(Debug, Clone, Default)]
 pub struct FunctionAttributes {
 	pub is_c_extern: bool,
+	pub is_extern: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -268,6 +269,12 @@ pub struct Function {
 	pub return_type: TypeRef,
 	pub scope: Rc<Scope>,
 	pub attributes: FunctionAttributes,
+}
+
+impl Function {
+	pub fn is_external(&self) -> bool {
+		self.attributes.is_extern || self.attributes.is_c_extern
+	}
 }
 
 impl Function {
@@ -364,7 +371,10 @@ impl AST {
 				unique_id: 0,
 			}],
 			return_type: void_ptr,
-			attributes: FunctionAttributes { is_c_extern: true },
+			attributes: FunctionAttributes {
+				is_c_extern: true,
+				..Default::default()
+			},
 			scope: Scope::new(None).into(),
 		});
 		self.functions.push(Function {
@@ -375,7 +385,10 @@ impl AST {
 				unique_id: 0,
 			}],
 			return_type: BUILTIN_TYPE_VOID,
-			attributes: FunctionAttributes { is_c_extern: true },
+			attributes: FunctionAttributes {
+				is_c_extern: true,
+				..Default::default()
+			},
 			scope: Scope::new(None).into(),
 		});
 		self.functions.push(Function {
@@ -398,7 +411,10 @@ impl AST {
 				},
 			],
 			return_type: void_ptr,
-			attributes: FunctionAttributes { is_c_extern: true },
+			attributes: FunctionAttributes {
+				is_c_extern: true,
+				..Default::default()
+			},
 			scope: Scope::new(None).into(),
 		});
 		self.functions.push(Function {
@@ -409,12 +425,15 @@ impl AST {
 				unique_id: 0,
 			}],
 			return_type: BUILTIN_TYPE_VOID,
-			attributes: FunctionAttributes { is_c_extern: true },
+			attributes: FunctionAttributes {
+				is_c_extern: true,
+				..Default::default()
+			},
 			scope: Scope::new(None).into(),
 		});
 	}
 
-	fn find_type<P: FnMut(&&Type) -> bool>(&self, predicate: P) -> Option<TypeRef> {
+	pub fn find_type<P: FnMut(&&Type) -> bool>(&self, predicate: P) -> Option<TypeRef> {
 		self.types
 			.iter()
 			.find_position(predicate)
