@@ -7,8 +7,8 @@ use crate::{
 	span::Span,
 };
 
-pub mod expressions;
-pub mod statements;
+mod expressions;
+mod statements;
 
 // dont want to have to write parser::ast::...
 include!("./ast.rs");
