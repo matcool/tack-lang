@@ -8,26 +8,63 @@ fn main(): i32 {
 }
 ```
 
-## Features
-- own lexer & parser
-- very bad x86 codegen
-- literally nothing else
-
-## TODO
+## Roadmap
 
 - [X] functions
 - [X] variables
-- [ ] proper types (only supports i32 and bool atm)
+- [ ] floats
 - [X] if statements
 - [X] else statements
 - [X] else if 
 - [X] while statements
-- [X] variable scoping in statements
-- [X] string support
+- [ ] for loops
+- [X] string
 - [X] structs
-- [ ] external functions? (not writing my own malloc)
-- [X] pointers
-- [ ] better build system (use temp folder maybe)
-- [ ] import
 - [X] structs as function args
-- [ ] arrays
+- [X] pointers
+- [X] import
+- [X] arrays
+- [ ] struct literals
+	```rs
+	struct Point {
+		x: i32;
+		y: i32;
+	}
+	fn main(): i32 {
+		let point: Point = Point { x: 10, y: 20 };
+		return point.x;
+	}
+	```
+- [ ] struct methods
+	```rs
+	struct Point {
+		x: i32;
+		y: i32;
+
+		fn dist_sqr(self): Point {
+			let res: Point;
+			res.x = self.x * self.x;
+			res.y = self.y * self.y;
+			return res;
+		}
+	}
+
+	fn main(): i32 {
+		let point: Point = Point { x: 10, y: 20 };
+		return point.dist_sqrt();
+	}
+	```
+- [ ] standard library
+- [ ] error handling (Result?, `try expr`?)
+- [ ] block expressions, yield statements
+- [ ] basic generics
+	```rs
+	// not sure on syntax still
+	fn add<T>(a: T, b: T): T {
+		return a + b;
+	}
+	fn main(): i32 {
+		// also not sure
+		return add<i32>(1, 2);
+	}
+	```
