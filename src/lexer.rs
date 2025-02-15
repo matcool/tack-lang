@@ -50,6 +50,15 @@ pub enum Operator {
 	Reference,
 }
 
+impl Operator {
+	pub fn is_binary(&self) -> bool {
+		!matches!(
+			self,
+			Operator::Not | Operator::Negate | Operator::Dereference | Operator::Reference
+		)
+	}
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
 	Keyword(Keyword),
