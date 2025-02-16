@@ -1,0 +1,19 @@
+// returns 0
+
+struct Point {
+	x: i32;
+	y: i32;
+}
+
+fn main(): i32 {
+	// this is allowed
+	let x: i32 = Point { x: 10, y: 13 }.x;
+	// same here
+	let b: bool = Point { x: 10, y: 13 }.x == 10;
+	// but not here, the () is needed because { is ambiguous
+	if (Point { x: 10, y: 13 }).x == 10 {
+		return 0;
+	} else {
+		return 1;
+	}
+}

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{cell::RefCell, path::PathBuf};
 
 use crate::{
 	ast,
@@ -20,6 +20,13 @@ pub struct Parser {
 	pub imported_files: Vec<String>,
 	input_path: PathBuf,
 	last_token_span: Span,
+	context_stack: RefCell<Vec<ParserContext>>,
+}
+
+#[derive(Default, Copy, Clone)]
+struct ParserContext {
+	/// This is used to signal the struct literal parser, since it might be ambiguous otherwise
+	in_statement_condition: bool,
 }
 
 #[derive(Debug)]
@@ -66,6 +73,7 @@ impl Parser {
 			imported_files: vec![],
 			input_path,
 			last_token_span: Default::default(),
+			context_stack: Default::default(),
 		}
 	}
 
@@ -248,6 +256,22 @@ impl Parser {
 
 	fn get_current_span(&mut self) -> Span {
 		self.tokens.peek().map(|x| x.span).unwrap_or_default()
+	}
+
+	fn ctx(&self) -> ParserContext {
+		self.context_stack
+			.try_borrow()
+			.ok()
+			.and_then(|s| s.last().copied())
+			.unwrap_or_default()
+	}
+
+	fn push_ctx(&self, ctx: ParserContext) {
+		self.context_stack.borrow_mut().push(ctx);
+	}
+
+	fn pop_ctx(&self) {
+		self.context_stack.borrow_mut().pop();
 	}
 }
 

@@ -1,0 +1,12 @@
+// returns 23
+
+struct Point {
+	x: i32;
+	y: i32;
+}
+
+fn main(): i32 {
+	let point: Point = Point { x: 10, y: 13 };
+
+	return point.x + point.y;
+}

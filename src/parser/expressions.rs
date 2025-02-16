@@ -108,7 +108,7 @@ impl Parser {
 	fn parse_expression_prefix(&mut self, token: Token) -> Result<Expression, ParserError> {
 		Ok(match token.kind {
 			TokenKind::Identifier(name) => {
-				if self.peek()?.kind == TokenKind::LeftBrace {
+				if self.peek()?.kind == TokenKind::LeftBrace && !self.ctx().in_statement_condition {
 					// Struct literal:
 					// <ident> { <ident>: <expr>, ... }
 					self.next()?; // {
@@ -137,7 +137,9 @@ impl Parser {
 				Expression::new(ExpressionKind::StringLiteral(content))
 			}
 			TokenKind::LeftParen => {
+				self.push_ctx(Default::default());
 				let exp = self.parse_expression()?;
+				self.pop_ctx();
 				expect_token!(self, self.next()?, TokenKind::RightParen)?;
 				exp
 			}
