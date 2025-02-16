@@ -24,7 +24,7 @@ fn main(): i32 {
 - [X] pointers
 - [X] import
 - [X] arrays
-- [ ] struct literals
+- [X] struct literals
 	```rs
 	struct Point {
 		x: i32;
