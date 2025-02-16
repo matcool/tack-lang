@@ -32,7 +32,7 @@ fn dump_statement(ast: &AST, stmt: &Statement, indent: &str) {
 			dump_expression(ast, expr, indent);
 		}
 		StatementKind::Return(expr) => {
-			println!("{indent}Statement: While");
+			println!("{indent}Statement: Return");
 			if let Some(expr) = expr {
 				dump_expression(ast, expr, &format!("  {indent}"));
 			}
@@ -82,6 +82,8 @@ fn dump_expression(ast: &AST, expr: &Expression, indent: &str) {
 				var.ty.formatted(ast)
 			)
 		}
+		ExpressionKind::NumberLiteral(num) => format!("NumberLiteral({num})"),
+		ExpressionKind::StringLiteral(s) => format!("StringLiteral({s})"),
 		ExpressionKind::BinaryOperator(op, _, _) => format!("BinaryOperator({op:?})"),
 		ExpressionKind::UnaryOperator(op, _) => format!("UnaryOperator({op:?})"),
 		ExpressionKind::Call(name, _) => format!("Call({name})"),

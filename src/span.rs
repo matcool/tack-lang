@@ -41,3 +41,12 @@ impl<T> DerefMut for Spanned<T> {
 		&mut self.value
 	}
 }
+
+pub trait Spannable: Sized {
+	fn spanned(self, span: Span) -> Spanned<Self>;
+}
+impl<T> Spannable for T {
+	fn spanned(self, span: Span) -> Spanned<Self> {
+		Spanned { value: self, span }
+	}
+}

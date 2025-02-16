@@ -2,6 +2,7 @@ use crate::{
 	diagnostics::ProducesError,
 	error_at_token, expect_token,
 	lexer::{Keyword, Operator, Token, TokenKind},
+	span::Spannable,
 };
 
 use super::{Expression, ExpressionKind, Parser, ParserError};
@@ -84,8 +85,8 @@ impl Parser {
 					_ => unimplemented!("no dynamic calls yet"),
 				};
 				let mut args = Vec::new();
-				self.parse_comma_list(|selfish: &mut Self| {
-					args.push(selfish.parse_expression()?);
+				self.parse_comma_list(TokenKind::RightParen, |this| {
+					args.push(this.parse_expression()?);
 					Ok(())
 				})?;
 				Expression::new(ExpressionKind::Call(name, args))
@@ -106,7 +107,28 @@ impl Parser {
 
 	fn parse_expression_prefix(&mut self, token: Token) -> Result<Expression, ParserError> {
 		Ok(match token.kind {
-			TokenKind::Identifier(name) => Expression::new(ExpressionKind::Identifier(name)),
+			TokenKind::Identifier(name) => {
+				if self.peek()?.kind == TokenKind::LeftBrace {
+					// Struct literal:
+					// <ident> { <ident>: <expr>, ... }
+					self.next()?; // {
+					let mut values = Vec::new();
+					self.parse_comma_list(TokenKind::RightBrace, |this| {
+						let span = this.get_current_span();
+
+						let name = expect_token!(this, this.next()?, TokenKind::Identifier(x), x)?;
+						expect_token!(this, this.next()?, TokenKind::Colon)?;
+						let expr = this.parse_expression()?;
+
+						let span = span.extended(this.last_token_span);
+						values.push((name, expr).spanned(span));
+						Ok(())
+					})?;
+					Expression::new(ExpressionKind::StructLiteral(name, values))
+				} else {
+					Expression::new(ExpressionKind::Identifier(name))
+				}
+			}
 			TokenKind::Number(number) => Expression::new(ExpressionKind::NumberLiteral(number)),
 			TokenKind::Keyword(value @ (Keyword::True | Keyword::False)) => {
 				Expression::new(ExpressionKind::BoolLiteral(value == Keyword::True))

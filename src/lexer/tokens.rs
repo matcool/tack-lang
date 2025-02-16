@@ -68,7 +68,7 @@ pub enum TokenKind {
 	RightBrace,
 	LeftBracket,
 	RightBracket,
-	TypeIndicator,
+	Colon,
 	Comma,
 	StringLiteral(String),
 	Attribute(Attribute),

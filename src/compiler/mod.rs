@@ -290,6 +290,14 @@ impl Compiler<'_> {
 
 				format!("({func_name}({args}))")
 			}
+			ExpressionKind::StructLiteral(values) => {
+				let value = self.allocate_value(expr.value_type);
+				for (name, expr) in values {
+					let child = self.compile_expression(expr);
+					self.body += &format!("{value}.{name} = {child};\n");
+				}
+				value
+			}
 			k => todo!("{k:?}"),
 		}
 	}

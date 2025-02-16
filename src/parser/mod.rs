@@ -142,14 +142,14 @@ impl Parser {
 		let mut function = Function::new(name);
 
 		expect_token!(self, self.next()?, TokenKind::LeftParen)?;
-		self.parse_comma_list(|selfish: &mut Self| {
-			function.arguments.push(selfish.parse_var_decl()?);
+		self.parse_comma_list(TokenKind::RightParen, |this| {
+			function.arguments.push(this.parse_var_decl()?);
 			Ok(())
 		})?;
 
 		let next = self.peek()?;
 		match next.kind {
-			TokenKind::TypeIndicator => {
+			TokenKind::Colon => {
 				self.next()?;
 				function.return_type = self.parse_type()?;
 			}
@@ -166,10 +166,11 @@ impl Parser {
 
 	fn parse_comma_list<C: FnMut(&mut Self) -> Result<(), ParserError>>(
 		&mut self,
+		terminator: TokenKind,
 		mut callable: C,
 	) -> Result<(), ParserError> {
 		loop {
-			if let TokenKind::RightParen = self.peek()?.kind {
+			if self.peek()?.kind == terminator {
 				self.next()?;
 				break;
 			}
@@ -179,11 +180,12 @@ impl Parser {
 			let next = self.next()?;
 			match next.kind {
 				TokenKind::Comma => {}
-				TokenKind::RightParen => {
-					break;
-				}
-				_ => {
-					error_at_token!(self, next, "Expected comma or end of list");
+				ref k => {
+					if k == &terminator {
+						break;
+					} else {
+						error_at_token!(self, next, "Expected comma or end of list");
+					}
 				}
 			}
 		}
@@ -214,7 +216,7 @@ impl Parser {
 	fn parse_var_decl(&mut self) -> Result<Variable, ParserError> {
 		let start = self.get_current_span();
 		let name = expect_token!(self, self.next()?, TokenKind::Identifier(x), x)?;
-		expect_token!(self, self.next()?, TokenKind::TypeIndicator)?;
+		expect_token!(self, self.next()?, TokenKind::Colon)?;
 		let ty = self.parse_type()?;
 		let span = start.extended(self.last_token_span);
 		Ok(Variable { name, ty, span })

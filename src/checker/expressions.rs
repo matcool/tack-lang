@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use itertools::Itertools;
 
 use crate::{
@@ -232,12 +234,7 @@ impl FunctionTypeChecker<'_> {
 					)
 				} else {
 					self.error(parsed.span, location!())
-						.message(format!(
-							"No field {field_name} in struct {}",
-							struct_ty.name
-						))
-						.description(format!("Unknown field {field_name}"))
-						.build();
+						.build_unknown_struct_field(&field_name, struct_ty);
 					dummy_expr()
 				}
 			}
@@ -441,6 +438,54 @@ impl FunctionTypeChecker<'_> {
 						.build();
 					dummy_expr()
 				}
+			}
+			parser::ExpressionKind::StructLiteral(struct_name, initializers) => {
+				let type_ref = self.ast.find_type_by_name(&struct_name);
+				let Some(Type::Struct(struct_type)) = type_ref.map(|ty| self.ast.get_type(ty))
+				else {
+					self.error(parsed.span, location!())
+						.message(format!("\"{struct_name}\" is not a known struct type"))
+						.build();
+					return dummy_expr();
+				};
+				let type_ref = type_ref.unwrap();
+				// lovely
+				let struct_type = struct_type.clone();
+
+				let mut seen = HashMap::new();
+				let mut values = Vec::new();
+				for initializer in initializers {
+					let span = initializer.span;
+					let (field_name, parsed) = initializer.value;
+					let Some(field) = struct_type.fields.iter().find(|f| f.name == field_name)
+					else {
+						self.error(span, location!())
+							.build_unknown_struct_field(&field_name, &struct_type);
+						continue;
+					};
+					if let Some(previous_span) = seen.get(&field_name) {
+						self.error(span, location!())
+							.message("Duplicate field in struct literal")
+							.extra(*previous_span, "Previously declared here")
+							.build();
+						continue;
+					}
+					seen.insert(field_name.clone(), span);
+					let mut expr = self.check_expression(parsed);
+					expr.cast_if_reference();
+					self.promote_int_literal_into(&mut expr, field.ty);
+					if expr.value_type != field.ty {
+						self.error(span, location!())
+							.message("Field initializer type mismatch")
+							.build_type_mismatch(expr.value_type, field.ty);
+					}
+					values.push((field_name, expr));
+				}
+				Expression::new_spanned(
+					type_ref,
+					ExpressionKind::StructLiteral(values),
+					parsed.span,
+				)
 			}
 			_ => todo!("{:?}", parsed),
 		}

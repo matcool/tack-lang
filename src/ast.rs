@@ -138,6 +138,7 @@ pub enum ExpressionKind {
 	StructAccess(Box<Expression>, String),
 	ArrayLiteral(Vec<Expression>),
 	ArrayIndex(Box<Expression>, Box<Expression>),
+	StructLiteral(Vec<(String, Expression)>),
 }
 
 #[derive(Debug)]
@@ -167,6 +168,7 @@ impl Expression {
 			ExpressionKind::StructAccess(a, _) => [&**a].into(),
 			ExpressionKind::ArrayLiteral(values) => values.iter().collect(),
 			ExpressionKind::ArrayIndex(a, b) => [&**a, &**b].into(),
+			ExpressionKind::StructLiteral(values) => values.iter().map(|x| &x.1).collect(),
 			_ => [].into(),
 		}
 	}

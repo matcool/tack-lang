@@ -49,6 +49,15 @@ impl<T: ProducesError + HasAST> ErrorBuilder<'_, T> {
 		self.message(format!("Variable \"{name}\" not found"))
 			.build();
 	}
+	fn build_unknown_struct_field(self, unk_field: &str, struct_type: &StructType) {
+		// TODO: maybe try to find closest match?
+		self.message(format!(
+			"No field \"{unk_field}\" in struct {}",
+			struct_type.name
+		))
+		.description(format!("Unknown field {unk_field}"))
+		.build();
+	}
 }
 
 fn dummy_expr() -> Expression {

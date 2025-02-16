@@ -1,5 +1,7 @@
 // ast nodes specific to the parser, not yet type checked
 
+use crate::span::Spanned;
+
 #[derive(Debug, Clone)]
 pub enum Type {
 	Name(String),
@@ -36,6 +38,7 @@ pub enum ExpressionKind {
 	ArrayLiteral(Vec<Expression>),
 	ArrayIndex(Box<Expression>, Box<Expression>),
 	StructAccess(Box<Expression>, String),
+	StructLiteral(String, Vec<Spanned<(String, Expression)>>),
 }
 
 #[derive(Debug)]
