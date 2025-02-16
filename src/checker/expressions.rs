@@ -2,7 +2,7 @@ use itertools::Itertools;
 
 use crate::{
 	ast::{
-		BuiltInType, Expression, ExpressionKind, Type, TypeRef, BUILTIN_TYPE_BOOL,
+		BuiltInType, Expression, ExpressionKind, HasAST, Type, TypeRef, BUILTIN_TYPE_BOOL,
 		BUILTIN_TYPE_I32, BUILTIN_TYPE_INT_LITERAL, BUILTIN_TYPE_STR, BUILTIN_TYPE_VOID,
 	},
 	diagnostics::ProducesError,

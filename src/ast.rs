@@ -462,6 +462,14 @@ impl AST {
 	}
 }
 
+pub trait HasAST {
+	fn ast(&self) -> &AST;
+
+	fn format_type(&self, ty: TypeRef) -> String {
+		ty.formatted(self.ast())
+	}
+}
+
 impl Expression {
 	/// Turns the expression into a cast into the given type
 	fn replace_with_cast(&mut self, ty: TypeRef) {

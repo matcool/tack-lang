@@ -6,8 +6,8 @@ use std::{
 
 use crate::{
 	ast::{
-		BuiltInType, Expression, ExpressionKind, Function, Scope, StructType, Type, TypeRef,
-		Variable, AST, BUILTIN_TYPE_INT_LITERAL,
+		BuiltInType, Expression, ExpressionKind, Function, HasAST, Scope, StructType, Type,
+		TypeRef, Variable, AST, BUILTIN_TYPE_INT_LITERAL,
 	},
 	diagnostics::{ErrorBuilder, ProducesError},
 	lexer::Lexer,
@@ -32,12 +32,12 @@ struct FunctionTypeChecker<'a> {
 	has_errored: &'a RefCell<bool>,
 }
 
-impl<T: ProducesErrorWithAST> ErrorBuilder<'_, T> {
+impl<T: ProducesError + HasAST> ErrorBuilder<'_, T> {
 	fn build_type_mismatch(self, actual: TypeRef, expected: TypeRef) -> TypeRef {
 		let description = format!(
 			"Expected {}, got {}",
-			expected.remove_reference().formatted(self.this.get_ast()),
-			actual.remove_reference().formatted(self.this.get_ast())
+			expected.remove_reference().formatted(self.this.ast()),
+			actual.remove_reference().formatted(self.this.ast())
 		);
 		self.description(description).build();
 		expected
@@ -273,10 +273,6 @@ impl FunctionTypeChecker<'_> {
 			.find(|var| var.name == name)
 			.cloned()
 	}
-
-	fn format_type(&self, type_ref: TypeRef) -> String {
-		type_ref.formatted(self.ast)
-	}
 }
 
 impl ProducesError for TypeChecker {
@@ -296,18 +292,15 @@ impl ProducesError for FunctionTypeChecker<'_> {
 		self.has_errored.replace(true);
 	}
 }
-pub trait ProducesErrorWithAST: ProducesError {
-	fn get_ast(&self) -> &AST;
-}
 
-impl ProducesErrorWithAST for TypeChecker {
-	fn get_ast(&self) -> &AST {
+impl HasAST for TypeChecker {
+	fn ast(&self) -> &AST {
 		&self.ast
 	}
 }
 
-impl ProducesErrorWithAST for FunctionTypeChecker<'_> {
-	fn get_ast(&self) -> &AST {
+impl HasAST for FunctionTypeChecker<'_> {
+	fn ast(&self) -> &AST {
 		self.ast
 	}
 }
