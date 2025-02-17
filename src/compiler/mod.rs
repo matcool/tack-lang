@@ -44,11 +44,25 @@ impl Compiler<'_> {
 			}
 		}
 
+		let mut function_declarations = String::new();
+		for function in &self.ast.functions {
+			function_declarations += &self.compile_function_decl(function);
+			function_declarations += ";\n";
+		}
+
 		let mut functions = String::new();
 		for function in &self.ast.functions {
-			functions += &self.compile_function(function);
+			if !function.is_external() {
+				functions += &self.compile_function(function);
+			}
 		}
-		[header, &self.struct_defitions, &functions].join("\n")
+		[
+			header,
+			&self.struct_defitions,
+			&function_declarations,
+			&functions,
+		]
+		.join("\n")
 	}
 
 	fn add_struct(&mut self, struct_type: &StructType) -> String {
@@ -86,9 +100,8 @@ impl Compiler<'_> {
 		self.variables = HashMap::new();
 	}
 
-	fn compile_function(&mut self, function: &Function) -> String {
+	fn compile_function_decl(&mut self, function: &Function) -> String {
 		let mut output = String::new();
-		self.reset_values();
 
 		let args = function
 			.arguments
@@ -105,6 +118,14 @@ impl Compiler<'_> {
 			self.format_type(function.return_type),
 			function.name
 		);
+
+		output
+	}
+
+	fn compile_function(&mut self, function: &Function) -> String {
+		self.reset_values();
+
+		let mut output = self.compile_function_decl(function);
 
 		if function.is_external() {
 			output += ";\n";

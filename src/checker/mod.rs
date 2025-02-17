@@ -129,6 +129,8 @@ impl TypeChecker {
 			}
 		}
 
+		let mut pending_functions = Vec::new();
+
 		// check structs
 		for parsed_struct in parser.parsed_structs {
 			let mut fields: Vec<Variable> = vec![];
@@ -148,7 +150,8 @@ impl TypeChecker {
 				fields,
 			}));
 			for function in parsed_struct.functions {
-				let function = self.check_struct_function(function, struct_type_ref);
+				let (function, scope) = self.check_struct_function(function, struct_type_ref);
+				pending_functions.push((self.ast.functions.len(), scope));
 				// TODO: add this to a special namespace or something
 				self.ast.functions.push(function);
 			}
@@ -156,19 +159,29 @@ impl TypeChecker {
 
 		// check functions
 		for function in parser.functions {
-			let function = self.check_function(function);
+			let (function, scope) = self.check_function(function);
+			pending_functions.push((self.ast.functions.len(), scope));
 			self.ast.functions.push(function);
 		}
 
-		asts.insert(0, self.ast);
+		// actually check function scopes
+		for (i, scope) in pending_functions {
+			// cloning here is probably not necessary but oh well!
+			let function = self.ast.functions[i].clone();
+			if !function.attributes.is_c_extern {
+				self.ast.functions[i] = self.check_function_scope(scope, function);
+			}
+		}
 
 		if self.has_errored.into_inner() {
 			std::process::exit(1);
 		}
+
+		asts.insert(0, self.ast);
 		Ok(asts)
 	}
 
-	fn check_function(&mut self, parsed: parser::Function) -> Function {
+	fn check_function(&mut self, parsed: parser::Function) -> (Function, parser::Scope) {
 		let return_type = self.ast.check_parsed_type(parsed.return_type);
 		let mut arguments = vec![];
 		for arg in parsed.arguments {
@@ -179,19 +192,15 @@ impl TypeChecker {
 		function.return_type = return_type;
 		function.arguments = arguments;
 		function.attributes = parsed.attributes;
-		if !function.attributes.is_c_extern {
-			let scope = self.check_function_scope(parsed.scope, &mut function);
-			function.scope = scope;
-		}
 
-		function
+		(function, parsed.scope)
 	}
 
 	fn check_struct_function(
 		&mut self,
 		parsed: parser::Function,
 		struct_type: TypeRef,
-	) -> Function {
+	) -> (Function, parser::Scope) {
 		let return_type = self.ast.check_parsed_type(parsed.return_type);
 		let mut arguments = vec![];
 		for arg in parsed.arguments {
@@ -212,19 +221,11 @@ impl TypeChecker {
 		function.return_type = return_type;
 		function.arguments = arguments;
 		function.attributes = parsed.attributes;
-		if !function.attributes.is_c_extern {
-			let scope = self.check_function_scope(parsed.scope, &mut function);
-			function.scope = scope;
-		}
 
-		function
+		(function, parsed.scope)
 	}
 
-	fn check_function_scope(
-		&mut self,
-		parsed: parser::Scope,
-		function: &mut Function,
-	) -> Rc<Scope> {
+	fn check_function_scope(&mut self, parsed: parser::Scope, mut function: Function) -> Function {
 		let scope = Rc::new(Scope::new(None));
 		// add the function args
 		for arg in &mut function.arguments {
@@ -232,7 +233,7 @@ impl TypeChecker {
 		}
 		let mut checker = FunctionTypeChecker {
 			ast: &mut self.ast,
-			function,
+			function: &function,
 			scope: Rc::clone(&scope),
 			file_path: &self.file_path,
 			has_errored: &self.has_errored,
@@ -241,7 +242,8 @@ impl TypeChecker {
 			let stmt = checker.check_statement(statement);
 			scope.add_statement(stmt);
 		}
-		scope
+		function.scope = scope;
+		function
 	}
 }
 

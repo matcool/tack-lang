@@ -1,0 +1,9 @@
+// returns 24
+
+fn main(): i32 {
+	return add(11, 13);
+}
+
+fn add(a: i32, b: i32): i32 {
+	return a + b;
+}
