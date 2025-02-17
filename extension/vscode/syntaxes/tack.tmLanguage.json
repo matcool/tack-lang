@@ -37,7 +37,7 @@
 				},
 				{
 					"name": "keyword.other.tack",
-					"match": "\\b(fn|let|struct|as|import)\\b"
+					"match": "\\b(fn|let|struct|as|import|self|Self)\\b"
 				},
 				{
 					"name": "keyword.other.attribute.tack",
@@ -66,6 +66,10 @@
 				{
 					"name": "entity.name.type.struct.tack",
 					"match": "(?<=struct\\s+)([a-zA-Z_]\\w*)"
+				},
+				{
+					"name": "entity.name.type.struct.tack",
+					"match": "([a-zA-Z_]\\w*)(?=\\s*{\\s*[a-zA-Z_]\\w*\\s*:)"
 				},
 				{
 					"name": "entity.name.type.variable.tack",
