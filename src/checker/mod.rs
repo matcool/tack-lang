@@ -13,6 +13,7 @@ use crate::{
 	lexer::Lexer,
 	location,
 	parser::{self, Parser},
+	span::Span,
 };
 
 mod expressions;
@@ -60,8 +61,8 @@ impl<T: ProducesError + HasAST> ErrorBuilder<'_, T> {
 	}
 }
 
-fn dummy_expr() -> Expression {
-	Expression::new(TypeRef::unknown(), ExpressionKind::NumberLiteral(0))
+fn dummy_expr(span: Span) -> Expression {
+	Expression::new_spanned(TypeRef::unknown(), ExpressionKind::NumberLiteral(0), span)
 }
 
 impl TypeChecker {

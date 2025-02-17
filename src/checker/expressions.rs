@@ -173,7 +173,7 @@ impl FunctionTypeChecker<'_> {
 				let Some(var) = self.find_variable(name) else {
 					self.error(parsed.span, location!())
 						.build_variable_not_found(name);
-					return dummy_expr();
+					return dummy_expr(parsed.span);
 				};
 				Expression::new_spanned(
 					var.ty.add_reference(),
@@ -201,7 +201,7 @@ impl FunctionTypeChecker<'_> {
 					self.error(parsed.span, location!())
 						.message("Expected struct")
 						.build();
-					return dummy_expr();
+					return dummy_expr(parsed.span);
 				};
 				if self.ast.is_pointer(struct_expr.ty) {
 					let casted = struct_expr.into_cast_ref();
@@ -228,7 +228,7 @@ impl FunctionTypeChecker<'_> {
 				} else {
 					self.error(parsed.span, location!())
 						.build_unknown_struct_field(&field_name, struct_ty);
-					dummy_expr()
+					dummy_expr(parsed.span)
 				}
 			}
 			parser::ExpressionKind::ArrayLiteral(values) => {
@@ -330,7 +330,7 @@ impl FunctionTypeChecker<'_> {
 								self.format_type(into)
 							))
 							.build();
-						return dummy_expr();
+						return dummy_expr(parsed.span);
 					}
 				}
 
@@ -361,7 +361,7 @@ impl FunctionTypeChecker<'_> {
 							self.format_type(child.ty.remove_reference())
 						))
 						.build();
-					return dummy_expr();
+					return dummy_expr(parsed.span);
 				};
 				Expression::new_spanned(
 					inner.add_reference(),
@@ -384,7 +384,7 @@ impl FunctionTypeChecker<'_> {
 					self.error(parsed.span, location!())
 						.message(format!("Function \"{func_name}\" not found"))
 						.build();
-					return dummy_expr();
+					return dummy_expr(parsed.span);
 				};
 				let call_args =
 					self.check_call_args(parsed.span, call_args, &calling_function.arguments);
@@ -402,7 +402,7 @@ impl FunctionTypeChecker<'_> {
 					self.error(parsed.span, location!())
 						.message(format!("\"{struct_name}\" is not a known struct type"))
 						.build();
-					return dummy_expr();
+					return dummy_expr(parsed.span);
 				};
 				let type_ref = type_ref.unwrap();
 				// lovely
@@ -454,7 +454,7 @@ impl FunctionTypeChecker<'_> {
 						self.error(parsed.span, location!())
 							.message("cant do temporaries yet")
 							.build();
-						return dummy_expr();
+						return dummy_expr(parsed.span);
 					}
 					struct_type_ref = struct_expr.ty;
 					let span = struct_expr.span;
@@ -475,13 +475,13 @@ impl FunctionTypeChecker<'_> {
 					self.error(struct_expr.span, location!())
 						.message("Expected struct")
 						.build();
-					return dummy_expr();
+					return dummy_expr(parsed.span);
 				};
 				let Some(function) = self.ast.functions.iter().find(|f| f.name == name) else {
 					self.error(parsed.span, location!())
 						.message("Unknown method {}")
 						.build();
-					return dummy_expr();
+					return dummy_expr(parsed.span);
 				};
 
 				args.insert(0, struct_expr);
