@@ -148,9 +148,7 @@ impl FunctionTypeChecker<'_> {
 			}
 			parser::ExpressionKind::UnaryOperator(Operator::Negate, child) => {
 				let child = self.check_expression(*child).into_cast_ref();
-				if child.ty != BUILTIN_TYPE_INT_LITERAL
-					&& !self.ast.is_integer(child.ty)
-				{
+				if child.ty != BUILTIN_TYPE_INT_LITERAL && !self.ast.is_integer(child.ty) {
 					self.error(parsed.span, location!())
 						.message("Negation must be done on integers")
 						.build_type_mismatch(child.ty, BUILTIN_TYPE_INT_LITERAL);
@@ -445,23 +443,28 @@ impl FunctionTypeChecker<'_> {
 				)
 			}
 			parser::ExpressionKind::MethodCall(struct_expr, name, args) => {
-				let struct_expr = self.check_expression(*struct_expr);
-				// TODO: extend lifetime if struct is a temporary or something
-				if !struct_expr.ty.reference {
-					self.error(parsed.span, location!())
-						.message("cant do temporaries yet")
-						.build();
-					return dummy_expr();
+				let mut struct_expr = self.check_expression(*struct_expr);
+				let struct_type_ref;
+				if let Type::Pointer(inner) = self.ast.get_type(struct_expr.ty) {
+					struct_expr = struct_expr.into_cast_ref();
+					struct_type_ref = *inner;
+				} else {
+					// TODO: extend lifetime if struct is a temporary or something
+					if !struct_expr.ty.reference {
+						self.error(parsed.span, location!())
+							.message("cant do temporaries yet")
+							.build();
+						return dummy_expr();
+					}
+					struct_type_ref = struct_expr.ty;
+					let span = struct_expr.span;
+					// the `self` arg in methods is just a pointer, so synthesize one
+					struct_expr = Expression::new_spanned(
+						self.ast.find_type_or_add(Type::Pointer(struct_expr.ty)),
+						ExpressionKind::UnaryOperator(Operator::Reference, struct_expr.into()),
+						span,
+					);
 				}
-				let struct_type_ref = struct_expr.ty;
-				let span = struct_expr.span;
-				// the `self` arg in methods is just a pointer, so synthesize one
-				let struct_expr = Expression::new_spanned(
-					self.ast
-						.find_type_or_add(Type::Pointer(struct_expr.ty)),
-					ExpressionKind::UnaryOperator(Operator::Reference, struct_expr.into()),
-					span,
-				);
 
 				let mut args: Vec<Expression> = args
 					.into_iter()
