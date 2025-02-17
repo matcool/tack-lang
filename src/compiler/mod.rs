@@ -206,7 +206,7 @@ impl Compiler<'_> {
 					Operator::NotEquals => "!=",
 					_ => unreachable!("{op:?} should not be here"),
 				};
-				self.allocate_value_and_set(expr.value_type, format!("{left} {c_op} {right}"))
+				self.allocate_value_and_set(expr.ty, format!("{left} {c_op} {right}"))
 			}
 			ExpressionKind::UnaryOperator(Operator::Negate, value) => {
 				let value = self.compile_expression(value);
@@ -227,8 +227,8 @@ impl Compiler<'_> {
 			}
 			ExpressionKind::Cast(child) => {
 				let value = self.compile_expression(child);
-				let from = child.value_type;
-				let into = expr.value_type;
+				let from = child.ty;
+				let into = expr.ty;
 
 				if from == into && from.reference && !into.reference {
 					// pointer dereference
@@ -261,22 +261,22 @@ impl Compiler<'_> {
 			}
 			ExpressionKind::StructAccess(child, name) => {
 				let mut value = self.compile_expression(child);
-				if child.value_type.reference {
+				if child.ty.reference {
 					value = format!("(*{value})");
 				}
 				value = format!("({value}.{name})");
-				if expr.value_type.reference {
+				if expr.ty.reference {
 					value = format!("(&{value})");
 				}
 				value
 			}
 			ExpressionKind::ArrayLiteral(values) => {
 				let elements = values.iter().map(|e| self.compile_expression(e)).join(", ");
-				format!("(({}){{{elements}}})", self.add_array(expr.value_type))
+				format!("(({}){{{elements}}})", self.add_array(expr.ty))
 			}
 			ExpressionKind::ArrayIndex(arr_expr, index) => {
 				let mut arr = self.compile_expression(arr_expr);
-				if self.ast.is_array(arr_expr.value_type) {
+				if self.ast.is_array(arr_expr.ty) {
 					arr = format!("{arr}.data");
 				}
 				let index = self.compile_expression(index);
@@ -291,7 +291,7 @@ impl Compiler<'_> {
 				format!("({func_name}({args}))")
 			}
 			ExpressionKind::StructLiteral(values) => {
-				let value = self.allocate_value(expr.value_type);
+				let value = self.allocate_value(expr.ty);
 				for (name, expr) in values {
 					let child = self.compile_expression(expr);
 					self.body += &format!("{value}.{name} = {child};\n");

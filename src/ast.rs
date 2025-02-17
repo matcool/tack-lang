@@ -144,7 +144,7 @@ pub enum ExpressionKind {
 #[derive(Debug)]
 pub struct Expression {
 	pub kind: ExpressionKind,
-	pub value_type: TypeRef,
+	pub ty: TypeRef,
 	pub span: Span,
 }
 
@@ -153,11 +153,7 @@ impl Expression {
 		Self::new_spanned(ty, kind, Default::default())
 	}
 	pub fn new_spanned(ty: TypeRef, kind: ExpressionKind, span: Span) -> Self {
-		Self {
-			kind,
-			value_type: ty,
-			span,
-		}
+		Self { kind, ty, span }
 	}
 	pub fn list_children(&self) -> Box<[&Expression]> {
 		match &self.kind {
@@ -475,10 +471,10 @@ pub trait HasAST {
 impl Expression {
 	/// Wraps the expression into a cast that removes the reference
 	pub fn into_cast_ref(self) -> Self {
-		if self.value_type.reference {
+		if self.ty.reference {
 			let span = self.span;
 			Expression::new_spanned(
-				self.value_type.remove_reference(),
+				self.ty.remove_reference(),
 				ExpressionKind::Cast(self.into()),
 				span,
 			)

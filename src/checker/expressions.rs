@@ -40,7 +40,7 @@ impl FunctionTypeChecker<'_> {
 				let mut right = self.check_expression(*right).into_cast_ref();
 				let left = self.check_expression(*left);
 
-				let left_ty = left.value_type;
+				let left_ty = left.ty;
 				if !left_ty.reference {
 					// this should prob not be a type mismatch
 					self.error(left.span, location!())
@@ -68,7 +68,7 @@ impl FunctionTypeChecker<'_> {
 				let mut right = self.check_expression(*right).into_cast_ref();
 
 				// Promote rhs into lhs if possible
-				let right_ty = self.promote_int_literal_into(&mut right, left.value_type);
+				let right_ty = self.promote_int_literal_into(&mut right, left.ty);
 				// Otherwise, promote lhs into rhs
 				let left_ty = self.promote_int_literal_into(&mut left, right_ty);
 
@@ -97,7 +97,7 @@ impl FunctionTypeChecker<'_> {
 					if rhs != BUILTIN_TYPE_I32 {
 						self.error(right.span, location!())
 							.message("Pointer arithmetic must be done with i32")
-							.build_type_mismatch(right.value_type, BUILTIN_TYPE_I32);
+							.build_type_mismatch(right.ty, BUILTIN_TYPE_I32);
 					}
 					return Expression::new_spanned(
 						left_ty,
@@ -148,15 +148,15 @@ impl FunctionTypeChecker<'_> {
 			}
 			parser::ExpressionKind::UnaryOperator(Operator::Negate, child) => {
 				let child = self.check_expression(*child).into_cast_ref();
-				if child.value_type != BUILTIN_TYPE_INT_LITERAL
-					&& !self.ast.is_integer(child.value_type)
+				if child.ty != BUILTIN_TYPE_INT_LITERAL
+					&& !self.ast.is_integer(child.ty)
 				{
 					self.error(parsed.span, location!())
 						.message("Negation must be done on integers")
-						.build_type_mismatch(child.value_type, BUILTIN_TYPE_INT_LITERAL);
+						.build_type_mismatch(child.ty, BUILTIN_TYPE_INT_LITERAL);
 				}
 				Expression::new_spanned(
-					child.value_type,
+					child.ty,
 					ExpressionKind::UnaryOperator(Operator::Negate, child.into()),
 					parsed.span,
 				)
@@ -186,9 +186,9 @@ impl FunctionTypeChecker<'_> {
 			parser::ExpressionKind::StructAccess(struct_expr, field_name) => {
 				let mut struct_expr = self.check_expression(*struct_expr);
 				let struct_ty: Option<TypeRef>;
-				match self.ast.get_type(struct_expr.value_type) {
+				match self.ast.get_type(struct_expr.ty) {
 					Type::Struct(_) => {
-						struct_ty = Some(struct_expr.value_type);
+						struct_ty = Some(struct_expr.ty);
 					}
 					Type::Pointer(inner) => {
 						if self.ast.is_struct(*inner) {
@@ -205,7 +205,7 @@ impl FunctionTypeChecker<'_> {
 						.build();
 					return dummy_expr();
 				};
-				if self.ast.is_pointer(struct_expr.value_type) {
+				if self.ast.is_pointer(struct_expr.ty) {
 					let casted = struct_expr.into_cast_ref();
 					struct_expr = Expression::new(
 						struct_ty.add_reference(),
@@ -216,7 +216,7 @@ impl FunctionTypeChecker<'_> {
 					unreachable!()
 				};
 				if let Some(field) = struct_ty.fields.iter().find(|f| f.name == field_name) {
-					let ty = if struct_expr.value_type.reference {
+					let ty = if struct_expr.ty.reference {
 						field.ty.add_reference()
 					} else {
 						field.ty
@@ -242,17 +242,17 @@ impl FunctionTypeChecker<'_> {
 				let mut inner_type = TypeRef::unknown();
 				for child in &mut values {
 					if inner_type.is_unknown() {
-						inner_type = child.value_type;
+						inner_type = child.ty;
 					} else {
 						self.promote_int_literal_into(child, inner_type);
-						if inner_type != child.value_type {
+						if inner_type != child.ty {
 							self.error(parsed.span, location!())
 								.message(format!(
 									"Array expected {}, got {}",
 									self.format_type(inner_type),
-									self.format_type(child.value_type)
+									self.format_type(child.ty)
 								))
-								.build_type_mismatch(child.value_type, inner_type);
+								.build_type_mismatch(child.ty, inner_type);
 						}
 					}
 				}
@@ -276,7 +276,7 @@ impl FunctionTypeChecker<'_> {
 				}
 
 				let arr_expr = self.check_expression(*arr_expr).into_cast_ref();
-				let arr_type = arr_expr.value_type;
+				let arr_type = arr_expr.ty;
 
 				let ty = if let Type::Pointer(inner) = self.ast.get_type(arr_type) {
 					inner.add_reference()
@@ -298,7 +298,7 @@ impl FunctionTypeChecker<'_> {
 			parser::ExpressionKind::Cast(into, child) => {
 				let into = self.ast.check_parsed_type(into);
 				let mut child = self.check_expression(*child).into_cast_ref();
-				let from = child.value_type;
+				let from = child.ty;
 
 				match (self.ast.get_type(from), self.ast.get_type(into)) {
 					(
@@ -340,13 +340,13 @@ impl FunctionTypeChecker<'_> {
 			}
 			parser::ExpressionKind::UnaryOperator(Operator::Reference, child) => {
 				let child = self.check_expression(*child);
-				if !child.value_type.reference {
+				if !child.ty.reference {
 					self.error(parsed.span, location!())
 						.build_expected_reference();
 				}
 				let ty = self
 					.ast
-					.find_type_or_add(Type::Pointer(child.value_type.remove_reference()));
+					.find_type_or_add(Type::Pointer(child.ty.remove_reference()));
 				Expression::new_spanned(
 					ty,
 					ExpressionKind::UnaryOperator(Operator::Reference, child.into()),
@@ -355,12 +355,12 @@ impl FunctionTypeChecker<'_> {
 			}
 			parser::ExpressionKind::UnaryOperator(Operator::Dereference, child) => {
 				let child = self.check_expression(*child).into_cast_ref();
-				let Type::Pointer(inner) = self.ast.get_type(child.value_type) else {
+				let Type::Pointer(inner) = self.ast.get_type(child.ty) else {
 					self.error(parsed.span, location!())
 						.message("Dereference on non pointer")
 						.description(format!(
 							"Expected pointer, got {}",
-							self.format_type(child.value_type.remove_reference())
+							self.format_type(child.ty.remove_reference())
 						))
 						.build();
 					return dummy_expr();
@@ -431,10 +431,10 @@ impl FunctionTypeChecker<'_> {
 					seen.insert(field_name.clone(), span);
 					let mut expr = self.check_expression(parsed).into_cast_ref();
 					self.promote_int_literal_into(&mut expr, field.ty);
-					if expr.value_type != field.ty {
+					if expr.ty != field.ty {
 						self.error(span, location!())
 							.message("Field initializer type mismatch")
-							.build_type_mismatch(expr.value_type, field.ty);
+							.build_type_mismatch(expr.ty, field.ty);
 					}
 					values.push((field_name, expr));
 				}
@@ -447,18 +447,18 @@ impl FunctionTypeChecker<'_> {
 			parser::ExpressionKind::MethodCall(struct_expr, name, args) => {
 				let struct_expr = self.check_expression(*struct_expr);
 				// TODO: extend lifetime if struct is a temporary or something
-				if !struct_expr.value_type.reference {
+				if !struct_expr.ty.reference {
 					self.error(parsed.span, location!())
 						.message("cant do temporaries yet")
 						.build();
 					return dummy_expr();
 				}
-				let struct_type_ref = struct_expr.value_type;
+				let struct_type_ref = struct_expr.ty;
 				let span = struct_expr.span;
 				// the `self` arg in methods is just a pointer, so synthesize one
 				let struct_expr = Expression::new_spanned(
 					self.ast
-						.find_type_or_add(Type::Pointer(struct_expr.value_type)),
+						.find_type_or_add(Type::Pointer(struct_expr.ty)),
 					ExpressionKind::UnaryOperator(Operator::Reference, struct_expr.into()),
 					span,
 				);

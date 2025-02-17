@@ -290,12 +290,12 @@ impl FunctionTypeChecker<'_> {
 	}
 
 	fn promote_int_literal_into(&self, expression: &mut Expression, type_ref: TypeRef) -> TypeRef {
-		if expression.value_type != BUILTIN_TYPE_INT_LITERAL {
-			return expression.value_type;
+		if expression.ty != BUILTIN_TYPE_INT_LITERAL {
+			return expression.ty;
 		}
 		let target_type = self.ast.get_type(type_ref);
 		if let Type::BuiltIn(BuiltInType::I32 | BuiltInType::U8 | BuiltInType::UPtr) = target_type {
-			expression.value_type = type_ref.remove_reference();
+			expression.ty = type_ref.remove_reference();
 			// TODO: children trait or something
 			if let ExpressionKind::BinaryOperator(_, left, right) = &mut expression.kind {
 				self.promote_int_literal_into(left, type_ref);
@@ -306,7 +306,7 @@ impl FunctionTypeChecker<'_> {
 				// todo!("Tried to promote something else {}", expression.kind);
 			}
 		}
-		expression.value_type
+		expression.ty
 	}
 
 	fn find_variable(&self, name: &str) -> Option<Variable> {

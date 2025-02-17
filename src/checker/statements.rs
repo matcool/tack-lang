@@ -37,17 +37,17 @@ impl FunctionTypeChecker<'_> {
 					if ty != self.function.return_type {
 						self.error(expr.span, location!())
 							.message("Expression does not match return type")
-							.build_type_mismatch(expr.value_type, self.function.return_type);
+							.build_type_mismatch(expr.ty, self.function.return_type);
 					}
 					Statement::new(StatementKind::Return(Some(expr)), parsed.span)
 				}
 			}
 			parser::StatementKind::If(parsed_scope, condition, else_stmt) => {
 				let condition = self.check_expression(condition).into_cast_ref();
-				if condition.value_type != BUILTIN_TYPE_BOOL {
+				if condition.ty != BUILTIN_TYPE_BOOL {
 					self.error(condition.span, location!())
 						.message("Condition must be boolean")
-						.build_type_mismatch(condition.value_type, BUILTIN_TYPE_BOOL);
+						.build_type_mismatch(condition.ty, BUILTIN_TYPE_BOOL);
 				}
 				let if_scope = self.check_scope(parsed_scope);
 				let else_stmt = else_stmt.map(|stmt| Box::new(self.check_statement(*stmt)));
@@ -63,10 +63,10 @@ impl FunctionTypeChecker<'_> {
 			}
 			parser::StatementKind::While(parsed_scope, condition) => {
 				let condition = self.check_expression(condition).into_cast_ref();
-				if condition.value_type != BUILTIN_TYPE_BOOL {
+				if condition.ty != BUILTIN_TYPE_BOOL {
 					self.error(condition.span, location!())
 						.message("Condition must be boolean")
-						.build_type_mismatch(condition.value_type, BUILTIN_TYPE_BOOL);
+						.build_type_mismatch(condition.ty, BUILTIN_TYPE_BOOL);
 				}
 				let scope = self.check_scope(parsed_scope);
 				Statement::new(StatementKind::While(scope, condition), parsed.span)

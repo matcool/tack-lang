@@ -90,10 +90,7 @@ fn dump_expression(ast: &AST, expr: &Expression, indent: &str) {
 		ExpressionKind::StructAccess(_, name) => format!("StructAccess({name})"),
 		k => format!("{}", k),
 	};
-	println!(
-		"{indent}Expression: {name} -> {}",
-		expr.value_type.formatted(ast)
-	);
+	println!("{indent}Expression: {name} -> {}", expr.ty.formatted(ast));
 	for expr in expr.list_children() {
 		dump_expression(ast, expr, &format!("  {indent}"));
 	}
