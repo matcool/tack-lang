@@ -17,23 +17,63 @@ fn print_num(num: i32) {
 		size = size + 1;
 	}
 
-	let s: str;
-	s.data = start;
-	s.size = size;
-	tack_print(s);
+	tack_print(str {
+		data: start,
+		size: size,
+	});
 	tack_print("\n");
 }
+
+@c_extern fn fopen(path: u8*, mode: u8*): void*;
+@c_extern fn fwrite(buffer: u8*, size: uptr, count: uptr, file: void*): uptr;
+@c_extern fn fclose(file: void*): i32;
 
 struct File {
 	fd: void*;
 	buffer: u8*;
 	buffer_size: i32;
 	buffer_cap: i32;
-}
 
-@c_extern fn fopen(path: u8*, mode: u8*): void*;
-@c_extern fn fwrite(buffer: u8*, size: uptr, count: uptr, file: void*): uptr;
-@c_extern fn fclose(file: void*): i32;
+	fn flush(self) {
+		if self.buffer_size != 0 {
+			fwrite(self.buffer, 1, self.buffer_size as uptr, self.fd);
+			self.buffer_size = 0;
+		}
+	}
+
+	fn write(self, data: u8*, size: i32) {
+		if size > self.buffer_cap {
+			self.flush();
+			fwrite(data, 1, size as uptr, self.fd);
+		} else {
+			if self.buffer_cap - self.buffer_size < size {
+				self.flush();
+			}
+			tack_memcpy((self.buffer + self.buffer_size) as void*, data as void*, size as uptr);
+			self.buffer_size = self.buffer_size + size;
+		}
+	}
+
+	fn close(self) {
+		self.flush();
+		fclose(self.fd);
+	}
+
+	fn write_s(self, msg: str) {
+		self.write(msg.data, msg.size);
+	}
+
+	fn write_byte(self, byte: u8) {
+		self.write(&byte, 1);
+	}
+
+	fn write_i32_be(self, value: i32) {
+		self.write_byte((value >> 24) as u8);
+		self.write_byte((value >> 16) as u8);
+		self.write_byte((value >> 8) as u8);
+		self.write_byte(value as u8);
+	}
+}
 
 fn open_file(name: str): File {
 	let c_str: u8* = tack_malloc((name.size + 1) as uptr) as u8*;
@@ -47,53 +87,12 @@ fn open_file(name: str): File {
 	// TODO: relying on c string null term
 	let fd: void* = fopen(c_str, "wb".data);
 
-	let file: File;
-	file.fd = fd;
-	file.buffer = tack_malloc(1024) as u8*;
-	file.buffer_size = 0;
-	file.buffer_cap = 1024;
-
-	return file;
-}
-
-fn file_flush(file: File*) {
-	if file.buffer_size != 0 {
-		fwrite(file.buffer, 1, file.buffer_size as uptr, file.fd);
-		file.buffer_size = 0;
-	}
-}
-
-fn file_write(file: File*, data: u8*, size: i32) {
-	if size > file.buffer_cap {
-		file_flush(file);
-		fwrite(data, 1, size as uptr, file.fd);
-	} else {
-		if file.buffer_cap - file.buffer_size < size {
-			file_flush(file);
-		}
-		tack_memcpy((file.buffer + file.buffer_size) as void*, data as void*, size as uptr);
-		file.buffer_size = file.buffer_size + size;
-	}
-}
-
-fn file_write_s(file: File*, msg: str) {
-	file_write(file, msg.data, msg.size);
-}
-
-fn file_close(file: File*) {
-	file_flush(file);
-	fclose(file.fd);
-}
-
-fn file_write_byte(file: File*, byte: u8) {
-	file_write(file, &byte, 1);
-}
-
-fn write_i32_be(file: File*, value: i32) {
-	file_write_byte(file, (value >> 24) as u8);
-	file_write_byte(file, (value >> 16) as u8);
-	file_write_byte(file, (value >> 8) as u8);
-	file_write_byte(file, value as u8);
+	return File {
+		fd: fd,
+		buffer: tack_malloc(1024) as u8*,
+		buffer_size: 0,
+		buffer_cap: 1024,
+	};
 }
 
 struct Color {
@@ -101,6 +100,18 @@ struct Color {
 	g: u8;
 	b: u8;
 	a: u8;
+
+	fn pack(self): i32 {
+		return self.r as i32 << 24 | self.g as i32 << 16 | self.b as i32 << 8 | self.a as i32;
+	}
+
+	fn hash(self): i32 {
+		return ((self.r as i32) * 3 + (self.g as i32) * 5 + (self.b as i32) * 7 + (self.a as i32) * 11) % 64;
+	}
+
+	fn eq(self, b: Color): bool {
+		return self.r == b.r && self.g == b.g && self.b == b.b && self.a == b.a;
+	}
 }
 
 fn unpack_color(color: i32): Color {
@@ -110,18 +121,6 @@ fn unpack_color(color: i32): Color {
 	res.b = (color >> 8) as u8;
 	res.a = (color) as u8;
 	return res;
-}
-
-fn pack_color(color: Color): i32 {
-	return color.r as i32 << 24 | color.g as i32 << 16 | color.b as i32 << 8 | color.a as i32;
-}
-
-fn hash_color(color: Color): i32 {
-	return ((color.r as i32) * 3 + (color.g as i32) * 5 + (color.b as i32) * 7 + (color.a as i32) * 11) % 64;
-}
-
-fn color_eq(a: Color, b: Color): bool {
-	return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
 }
 
 fn wrap_diff(value: i32, prev: i32): i32 {
@@ -136,18 +135,14 @@ fn save_image(name: str, pixels: i32*, width: i32, height: i32) {
 	let file: File = open_file(name);
 
 	// file header
-	file_write_s(&file, "qoif");
-	write_i32_be(&file, width);
-	write_i32_be(&file, height);
-	file_write_byte(&file, 4); // RGBA
-	file_write_byte(&file, 0); // sRGB (idk what this means)
+	file.write_s("qoif");
+	file.write_i32_be(width);
+	file.write_i32_be(height);
+	file.write_byte(4); // RGBA
+	file.write_byte(0); // sRGB (idk what this means)
 
 	let i: i32 = 0;
-	let prev_color: Color;
-	prev_color.r = 0;
-	prev_color.g = 0;
-	prev_color.b = 0;
-	prev_color.a = 255;
+	let prev_color: Color = Color { r: 0, g: 0, b: 0, a: 255 };
 	let run_length: i32 = 0;
 
 	let color_array: i32* = tack_malloc(64 * 4) as i32*;
@@ -163,73 +158,73 @@ fn save_image(name: str, pixels: i32*, width: i32, height: i32) {
 	let total_luma: i32 = 0;
 	let total_rgb: i32 = 0;
 	let total_rgba: i32 = 0;
-	
+
 	while i < width * height {
 		let raw_color: i32 = pixels[i];
 		let color: Color = unpack_color(raw_color);
-		let hash_index: i32 = hash_color(color);
-		if color_eq(color, prev_color) && run_length < 61 {
+		let hash_index: i32 = color.hash();
+		if color.eq(prev_color) && run_length < 61 {
 			run_length = run_length + 1;
 		} else {
 			if run_length != 0 {
 				// QOI_OP_RUN
-				file_write_byte(&file, 0xc0 | (run_length - 1) as u8);
+				file.write_byte(0xc0 | (run_length - 1) as u8);
 				run_length = 0;
 				total_run = total_run + 1;
 			}
-			let hash_index_color: Color = unpack_color(*(color_array + hash_index));
-			if color_eq(color, hash_index_color) {
+			let hash_index_color: Color = unpack_color(color_array[hash_index]);
+			if color.eq(hash_index_color) {
 				// QOI_OP_INDEX
-				file_write_byte(&file, hash_index as u8);
+				file.write_byte(hash_index as u8);
 				total_index = total_index + 1;
 			} else if color.a == prev_color.a {
 				let dr: i32 = wrap_diff(color.r as i32, prev_color.r as i32);
 				let dg: i32 = wrap_diff(color.g as i32, prev_color.g as i32);
-				let db: i32 = wrap_diff(color.b as i32, prev_color.b as i32);	
+				let db: i32 = wrap_diff(color.b as i32, prev_color.b as i32);
 				if dr >= -2 && dr <= 1 && dg >= -2 && dg <= 1 && db >= -2 && db <= 1 {
 					// QOI_OP_DIFF
 					let byte: u8 = 0x40 | ((dr + 2) << 4) as u8 | ((dg + 2) << 2) as u8 | (db + 2) as u8;
-					file_write_byte(&file, byte);
+					file.write_byte(byte);
 					total_diff = total_diff + 1;
 				} else {
 					let dr_dg: i32 = wrap_diff(dr, dg);
 					let db_dg: i32 = wrap_diff(db, dg);
 					if dg >= -32 && dg <= 31 && dr_dg >= -8 && dr_dg <= 7 && db_dg >= -8 && db_dg <= 7 {
 						// QOI_OP_LUMA
-						file_write_byte(&file, 0x80 | (dg + 32) as u8);
-						file_write_byte(&file, ((dr_dg + 8) << 4) as u8 | (db_dg + 8) as u8);
+						file.write_byte(0x80 | (dg + 32) as u8);
+						file.write_byte(((dr_dg + 8) << 4) as u8 | (db_dg + 8) as u8);
 						total_luma = total_luma + 1;
 					} else {
 						// QOI_OP_RGB
-						file_write_byte(&file, 0xFE);
-						file_write_byte(&file, color.r);
-						file_write_byte(&file, color.g);
-						file_write_byte(&file, color.b);
+						file.write_byte(0xFE);
+						file.write_byte(color.r);
+						file.write_byte(color.g);
+						file.write_byte(color.b);
 						total_rgb = total_rgb + 1;
 					}
 				}
 			} else {
 				// QOI_OP_RGBA
-				file_write_byte(&file, 0xFF);
-				write_i32_be(&file, raw_color);
+				file.write_byte(0xFF);
+				file.write_i32_be(raw_color);
 				total_rgba = total_rgba + 1;
 			}
 		}
 
-		color_array[hash_index] = pack_color(color);
+		color_array[hash_index] = color.pack();
 		prev_color = color;
-		
+
 		i = i + 1;
 	}
 	if run_length != 0 {
-		file_write_byte(&file, 0xc0 | (run_length - 1) as u8);
+		file.write_byte(0xc0 | (run_length - 1) as u8);
 		run_length = 0;
 		total_run = total_run + 1;
 	}
 	// mark end of stream
-	file_write_s(&file, "\0\0\0\0\0\0\0");
-	file_write_byte(&file, 1);
-	file_close(&file);
+	file.write_s("\0\0\0\0\0\0\0");
+	file.write_byte(1);
+	file.close();
 
 	tack_print("Total counts\n");
 	tack_print("Total RUN: "); print_num(total_run);
