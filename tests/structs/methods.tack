@@ -1,0 +1,15 @@
+// returns 25
+
+struct Foo {
+	x: i32;
+	y: i32;
+
+	fn dist_squared(self): i32 {
+		return self.x * self.x + self.y * self.y;
+	}
+}
+
+fn main(): i32 {
+	let f: Foo = Foo { x: 3, y: 4 };
+	return f.dist_squared();
+}

@@ -133,7 +133,6 @@ impl TypeChecker {
 			let mut fields: Vec<Variable> = vec![];
 			for field in parsed_struct.fields {
 				if let Some(existing_field) = fields.iter().find(|f| f.name == field.name) {
-					// TODO: show the other one
 					self.error(field.span, location!())
 						.message("Duplicate field names")
 						.description(format!("Re-definition of \"{}\"", field.name))
@@ -143,10 +142,15 @@ impl TypeChecker {
 				}
 				fields.push(self.ast.check_parsed_var(field));
 			}
-			self.ast.add_type(Type::Struct(StructType {
+			let struct_type_ref = self.ast.add_type(Type::Struct(StructType {
 				name: parsed_struct.name.clone(),
 				fields,
 			}));
+			for function in parsed_struct.functions {
+				let function = self.check_struct_function(function, struct_type_ref);
+				// TODO: add this to a special namespace or something
+				self.ast.functions.push(function);
+			}
 		}
 
 		// check functions
@@ -168,6 +172,39 @@ impl TypeChecker {
 		let mut arguments = vec![];
 		for arg in parsed.arguments {
 			arguments.push(self.ast.check_parsed_var(arg));
+		}
+
+		let mut function = Function::new(parsed.name);
+		function.return_type = return_type;
+		function.arguments = arguments;
+		function.attributes = parsed.attributes;
+		if !function.attributes.is_c_extern {
+			let scope = self.check_function_scope(parsed.scope, &mut function);
+			function.scope = scope;
+		}
+
+		function
+	}
+
+	fn check_struct_function(
+		&mut self,
+		parsed: parser::Function,
+		struct_type: TypeRef,
+	) -> Function {
+		let return_type = self.ast.check_parsed_type(parsed.return_type);
+		let mut arguments = vec![];
+		for arg in parsed.arguments {
+			// TODO: hack
+			if arg.name == "self" {
+				arguments.push(Variable {
+					name: "self".into(),
+					unique_id: 0,
+					ty: self.ast.find_type_or_add(Type::Pointer(struct_type)),
+					span: arg.span,
+				});
+			} else {
+				arguments.push(self.ast.check_parsed_var(arg));
+			}
 		}
 
 		let mut function = Function::new(parsed.name);

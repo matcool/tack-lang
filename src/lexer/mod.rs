@@ -198,6 +198,8 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 					"struct" => TokenKind::Keyword(Keyword::Struct),
 					"as" => TokenKind::Operator(Operator::As),
 					"import" => TokenKind::Keyword(Keyword::Import),
+					"self" => TokenKind::Keyword(Keyword::SmallSelf),
+					"Self" => TokenKind::Keyword(Keyword::BigSelf),
 					_ => TokenKind::Identifier(identifier),
 				}
 			}

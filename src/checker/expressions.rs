@@ -4,13 +4,15 @@ use itertools::Itertools;
 
 use crate::{
 	ast::{
-		BuiltInType, Expression, ExpressionKind, HasAST, Type, TypeRef, BUILTIN_TYPE_BOOL,
-		BUILTIN_TYPE_I32, BUILTIN_TYPE_INT_LITERAL, BUILTIN_TYPE_STR, BUILTIN_TYPE_VOID,
+		BuiltInType, Expression, ExpressionKind, HasAST, Type, TypeRef, Variable,
+		BUILTIN_TYPE_BOOL, BUILTIN_TYPE_I32, BUILTIN_TYPE_INT_LITERAL, BUILTIN_TYPE_STR,
+		BUILTIN_TYPE_VOID,
 	},
 	diagnostics::ProducesError,
 	lexer::Operator,
 	location,
 	parser::{self},
+	span::Span,
 };
 
 use super::{dummy_expr, FunctionTypeChecker};
@@ -382,62 +384,30 @@ impl FunctionTypeChecker<'_> {
 				)
 			}
 			parser::ExpressionKind::Call(func_name, args) => {
-				let mut call_args = args
+				let call_args = args
 					.into_iter()
-					.map(|e| self.check_expression(e))
+					.map(|e| self.check_expression(e).into_cast_ref())
 					.collect_vec();
-				if let Some(calling_function) = self
+				let Some(calling_function) = self
 					.ast
 					.functions
 					.iter()
 					.find(|f| f.name == func_name)
-					.or_else(|| {
-						if func_name == self.function.name {
-							Some(self.function)
-						} else {
-							None
-						}
-					}) {
-					let func_arguments = calling_function.arguments.clone();
-
-					if call_args.len() != func_arguments.len() {
-						let kind = if call_args.len() < func_arguments.len() {
-							"Not enough"
-						} else {
-							"Too many"
-						};
-						self.error(parsed.span, location!())
-							.message(format!("{kind} arguments for function call"))
-							.description(format!(
-								"Expected {} arguments, got {}",
-								func_arguments.len(),
-								call_args.len()
-							))
-							.build();
-						return dummy_expr();
-					}
-
-					for (arg, exp) in func_arguments.iter().zip(call_args.iter_mut()) {
-						exp.cast_if_reference();
-						let ty = self.promote_int_literal_into(exp, arg.ty);
-						if ty != arg.ty {
-							self.error(exp.span, location!())
-								.message("Function call argument type does not match")
-								.build_type_mismatch(ty, arg.ty);
-						}
-					}
-
-					Expression::new_spanned(
-						calling_function.return_type,
-						ExpressionKind::Call(func_name, call_args),
-						parsed.span,
-					)
-				} else {
+					.or_else(|| (func_name == self.function.name).then_some(self.function))
+				else {
 					self.error(parsed.span, location!())
 						.message(format!("Function \"{func_name}\" not found"))
 						.build();
-					dummy_expr()
-				}
+					return dummy_expr();
+				};
+				let call_args =
+					self.check_call_args(parsed.span, call_args, &calling_function.arguments);
+
+				Expression::new_spanned(
+					calling_function.return_type,
+					ExpressionKind::Call(func_name, call_args),
+					parsed.span,
+				)
 			}
 			parser::ExpressionKind::StructLiteral(struct_name, initializers) => {
 				let type_ref = self.ast.find_type_by_name(&struct_name);
@@ -487,7 +457,91 @@ impl FunctionTypeChecker<'_> {
 					parsed.span,
 				)
 			}
+			parser::ExpressionKind::MethodCall(struct_expr, name, args) => {
+				let struct_expr = self.check_expression(*struct_expr);
+				// TODO: extend lifetime if struct is a temporary or something
+				if !struct_expr.value_type.reference {
+					self.error(parsed.span, location!())
+						.message("cant do temporaries yet")
+						.build();
+					return dummy_expr();
+				}
+				let struct_type_ref = struct_expr.value_type;
+				let span = struct_expr.span;
+				// the `self` arg in methods is just a pointer, so synthesize one
+				let struct_expr = Expression::new_spanned(
+					self.ast
+						.find_type_or_add(Type::Pointer(struct_expr.value_type)),
+					ExpressionKind::UnaryOperator(Operator::Reference, struct_expr.into()),
+					span,
+				);
+
+				let mut args: Vec<Expression> = args
+					.into_iter()
+					.map(|e| self.check_expression(e).into_cast_ref())
+					.collect_vec();
+
+				let Type::Struct(_) = self.ast.get_type(struct_type_ref) else {
+					self.error(struct_expr.span, location!())
+						.message("Expected struct")
+						.build();
+					return dummy_expr();
+				};
+				let Some(function) = self.ast.functions.iter().find(|f| f.name == name) else {
+					self.error(parsed.span, location!())
+						.message("Unknown method {}")
+						.build();
+					return dummy_expr();
+				};
+
+				args.insert(0, struct_expr);
+				let args = self.check_call_args(parsed.span, args, &function.arguments);
+
+				Expression::new_spanned(
+					function.return_type,
+					ExpressionKind::Call(name, args),
+					parsed.span,
+				)
+			}
 			_ => todo!("{:?}", parsed),
 		}
+	}
+
+	fn check_call_args(
+		&self,
+		span: Span,
+		unchecked_args: Vec<Expression>,
+		function_args: &[Variable],
+	) -> Vec<Expression> {
+		if unchecked_args.len() != function_args.len() {
+			let kind = if unchecked_args.len() < function_args.len() {
+				"Not enough"
+			} else {
+				"Too many"
+			};
+			self.error(span, location!())
+				.message(format!("{kind} arguments for function call"))
+				.description(format!(
+					"Expected {} arguments, got {}",
+					function_args.len(),
+					unchecked_args.len()
+				))
+				.build();
+			return vec![];
+		}
+
+		unchecked_args
+			.into_iter()
+			.zip(function_args.iter())
+			.map(|(mut call_arg, function_arg)| {
+				let ty = self.promote_int_literal_into(&mut call_arg, function_arg.ty);
+				if ty != function_arg.ty {
+					self.error(call_arg.span, location!())
+						.message("Function call argument type does not match")
+						.build_type_mismatch(ty, function_arg.ty);
+				}
+				call_arg
+			})
+			.collect()
 	}
 }

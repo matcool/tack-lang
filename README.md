@@ -41,17 +41,14 @@ fn main(): i32 {
 		x: i32;
 		y: i32;
 
-		fn dist_sqr(self): Point {
-			let res: Point;
-			res.x = self.x * self.x;
-			res.y = self.y * self.y;
-			return res;
+		fn dist_squared(self): i32 {
+			return self.x * self.x + self.y * self.y;
 		}
 	}
 
 	fn main(): i32 {
 		let point: Point = Point { x: 10, y: 20 };
-		return point.dist_sqrt();
+		return point.dist_squared();
 	}
 	```
 - [ ] standard library

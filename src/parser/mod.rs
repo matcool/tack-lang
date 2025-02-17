@@ -98,7 +98,7 @@ impl Parser {
 		while let Ok(token) = self.next() {
 			match token.kind {
 				TokenKind::Keyword(Keyword::Fn) => {
-					let mut function = self.parse_function_decl()?;
+					let mut function = self.parse_function_decl(false)?;
 					let statements = self.parse_block()?;
 					function.scope.statements = statements;
 					self.functions.push(function);
@@ -109,13 +109,24 @@ impl Parser {
 					let mut parsed_struct = ParsedStruct {
 						name,
 						fields: vec![],
+						functions: vec![],
 					};
 
 					expect_token!(self, self.next()?, TokenKind::LeftBrace)?;
 
 					while !matches!(self.peek()?.kind, TokenKind::RightBrace) {
-						parsed_struct.fields.push(self.parse_var_decl()?);
-						expect_token!(self, self.next()?, TokenKind::Semicolon)?;
+						match self.peek()?.kind {
+							TokenKind::Keyword(Keyword::Fn) => {
+								self.next()?;
+								let mut function = self.parse_function_decl(true)?;
+								function.scope.statements = self.parse_block()?;
+								parsed_struct.functions.push(function);
+							}
+							_ => {
+								parsed_struct.fields.push(self.parse_var_decl()?);
+								expect_token!(self, self.next()?, TokenKind::Semicolon)?;
+							}
+						}
 					}
 
 					self.next()?; // RightBracket
@@ -130,7 +141,7 @@ impl Parser {
 				}
 				TokenKind::Attribute(Attribute::CExtern) => {
 					expect_token!(self, self.next()?, TokenKind::Keyword(Keyword::Fn))?;
-					let mut function = self.parse_function_decl()?;
+					let mut function = self.parse_function_decl(false)?;
 					expect_token!(self, self.next()?, TokenKind::Semicolon)?;
 					function.attributes.is_c_extern = true;
 					self.functions.push(function);
@@ -144,14 +155,24 @@ impl Parser {
 	}
 
 	/// Parse the very beginning of a function and return it, with an empty scope
-	fn parse_function_decl(&mut self) -> Result<Function, ParserError> {
+	fn parse_function_decl(&mut self, inside_struct: bool) -> Result<Function, ParserError> {
 		let name = expect_token!(self, self.next()?, TokenKind::Identifier(x), x)?;
 
 		let mut function = Function::new(name);
 
 		expect_token!(self, self.next()?, TokenKind::LeftParen)?;
 		self.parse_comma_list(TokenKind::RightParen, |this| {
-			function.arguments.push(this.parse_var_decl()?);
+			if inside_struct && this.peek()?.kind == TokenKind::Keyword(Keyword::SmallSelf) {
+				let span = this.next()?.span;
+				// TODO: this is kinda nasty
+				function.arguments.push(Variable {
+					name: "self".into(),
+					span,
+					ty: Type::Unknown,
+				});
+			} else {
+				function.arguments.push(this.parse_var_decl()?);
+			}
 			Ok(())
 		})?;
 

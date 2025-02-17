@@ -487,4 +487,18 @@ impl Expression {
 			self.replace_with_cast(self.value_type.remove_reference());
 		}
 	}
+
+	/// Wraps the expression into a cast that removes the reference
+	pub fn into_cast_ref(self) -> Self {
+		if self.value_type.reference {
+			let span = self.span;
+			Expression::new_spanned(
+				self.value_type.remove_reference(),
+				ExpressionKind::Cast(self.into()),
+				span,
+			)
+		} else {
+			self
+		}
+	}
 }

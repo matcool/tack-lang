@@ -80,16 +80,25 @@ impl Parser {
 				Expression::new(ExpressionKind::StructAccess(left.into(), name))
 			}
 			TokenKind::LeftParen => {
+				let mut struct_expr = None;
 				let name = match left.kind {
 					ExpressionKind::Identifier(name) => name,
-					_ => unimplemented!("no dynamic calls yet"),
+					ExpressionKind::StructAccess(expr, name) => {
+						struct_expr = Some(expr);
+						name
+					}
+					k => unimplemented!("no dynamic calls yet {k:?}"),
 				};
 				let mut args = Vec::new();
 				self.parse_comma_list(TokenKind::RightParen, |this| {
 					args.push(this.parse_expression()?);
 					Ok(())
 				})?;
-				Expression::new(ExpressionKind::Call(name, args))
+				if let Some(struct_expr) = struct_expr {
+					Expression::new(ExpressionKind::MethodCall(struct_expr, name, args))
+				} else {
+					Expression::new(ExpressionKind::Call(name, args))
+				}
 			}
 			TokenKind::LeftBracket => {
 				let index_exp = self.parse_expression()?;
@@ -172,6 +181,10 @@ impl Parser {
 			TokenKind::Keyword(Keyword::Let) => {
 				let var = self.parse_var_decl()?;
 				Expression::new(ExpressionKind::Declaration(var))
+			}
+			TokenKind::Keyword(Keyword::SmallSelf) => {
+				// TODO: is this a good idea?
+				Expression::new(ExpressionKind::Identifier("self".into()))
 			}
 			_ => {
 				self.error(token.span, location!())

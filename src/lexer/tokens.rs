@@ -10,6 +10,8 @@ pub enum Keyword {
 	False,
 	Struct,
 	Import,
+	SmallSelf,
+	BigSelf,
 }
 
 #[derive(Debug, Clone, PartialEq)]

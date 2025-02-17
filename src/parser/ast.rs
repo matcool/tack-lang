@@ -10,10 +10,11 @@ pub enum Type {
 	Unknown, // used as a default value, shouldnt be used anywhere
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ParsedStruct {
 	pub name: String,
 	pub fields: Vec<Variable>,
+	pub functions: Vec<Function>,
 }
 
 /// Represents a variable declaration, e.g. `x: i32`
@@ -39,6 +40,7 @@ pub enum ExpressionKind {
 	ArrayIndex(Box<Expression>, Box<Expression>),
 	StructAccess(Box<Expression>, String),
 	StructLiteral(String, Vec<Spanned<(String, Expression)>>),
+	MethodCall(Box<Expression>, String, Vec<Expression>),
 }
 
 #[derive(Debug)]
