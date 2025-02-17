@@ -37,9 +37,8 @@ impl FunctionTypeChecker<'_> {
 			),
 			parser::ExpressionKind::BinaryOperator(Operator::Assign, left, right) => {
 				// check rhs first
-				let mut right = self.check_expression(*right);
+				let mut right = self.check_expression(*right).into_cast_ref();
 				let left = self.check_expression(*left);
-				right.cast_if_reference();
 
 				let left_ty = left.value_type;
 				if !left_ty.reference {
@@ -65,8 +64,8 @@ impl FunctionTypeChecker<'_> {
 				)
 			}
 			parser::ExpressionKind::BinaryOperator(op, left, right) => {
-				let mut left = self.check_expression(*left);
-				let mut right = self.check_expression(*right);
+				let mut left = self.check_expression(*left).into_cast_ref();
+				let mut right = self.check_expression(*right).into_cast_ref();
 
 				// Promote rhs into lhs if possible
 				let right_ty = self.promote_int_literal_into(&mut right, left.value_type);
@@ -100,10 +99,8 @@ impl FunctionTypeChecker<'_> {
 							.message("Pointer arithmetic must be done with i32")
 							.build_type_mismatch(right.value_type, BUILTIN_TYPE_I32);
 					}
-					left.cast_if_reference();
-					right.cast_if_reference();
 					return Expression::new_spanned(
-						left_ty.remove_reference(),
+						left_ty,
 						ExpressionKind::BinaryOperator(op, left.into(), right.into()),
 						parsed.span,
 					);
@@ -134,9 +131,6 @@ impl FunctionTypeChecker<'_> {
 					}
 				}
 
-				left.cast_if_reference();
-				right.cast_if_reference();
-
 				let ty = match op {
 					Operator::Equals
 					| Operator::NotEquals
@@ -144,7 +138,7 @@ impl FunctionTypeChecker<'_> {
 					| Operator::GreaterThanEq
 					| Operator::LessThan
 					| Operator::LessThanEq => BUILTIN_TYPE_BOOL,
-					_ => left_ty.remove_reference(),
+					_ => left_ty,
 				};
 				Expression::new_spanned(
 					ty,
@@ -153,7 +147,7 @@ impl FunctionTypeChecker<'_> {
 				)
 			}
 			parser::ExpressionKind::UnaryOperator(Operator::Negate, child) => {
-				let mut child = self.check_expression(*child);
+				let child = self.check_expression(*child).into_cast_ref();
 				if child.value_type != BUILTIN_TYPE_INT_LITERAL
 					&& !self.ast.is_integer(child.value_type)
 				{
@@ -161,7 +155,6 @@ impl FunctionTypeChecker<'_> {
 						.message("Negation must be done on integers")
 						.build_type_mismatch(child.value_type, BUILTIN_TYPE_INT_LITERAL);
 				}
-				child.cast_if_reference();
 				Expression::new_spanned(
 					child.value_type,
 					ExpressionKind::UnaryOperator(Operator::Negate, child.into()),
@@ -213,10 +206,10 @@ impl FunctionTypeChecker<'_> {
 					return dummy_expr();
 				};
 				if self.ast.is_pointer(struct_expr.value_type) {
-					struct_expr.cast_if_reference();
+					let casted = struct_expr.into_cast_ref();
 					struct_expr = Expression::new(
 						struct_ty.add_reference(),
-						ExpressionKind::UnaryOperator(Operator::Dereference, struct_expr.into()),
+						ExpressionKind::UnaryOperator(Operator::Dereference, casted.into()),
 					);
 				}
 				let Type::Struct(struct_ty) = self.ast.get_type(struct_ty) else {
@@ -243,12 +236,11 @@ impl FunctionTypeChecker<'_> {
 			parser::ExpressionKind::ArrayLiteral(values) => {
 				let mut values = values
 					.into_iter()
-					.map(|e| self.check_expression(e))
+					.map(|e| self.check_expression(e).into_cast_ref())
 					.collect_vec();
 
 				let mut inner_type = TypeRef::unknown();
 				for child in &mut values {
-					child.cast_if_reference();
 					if inner_type.is_unknown() {
 						inner_type = child.value_type;
 					} else {
@@ -275,8 +267,7 @@ impl FunctionTypeChecker<'_> {
 				Expression::new_spanned(ty, ExpressionKind::ArrayLiteral(values), parsed.span)
 			}
 			parser::ExpressionKind::ArrayIndex(arr_expr, index_expr) => {
-				let mut index_expr = self.check_expression(*index_expr);
-				index_expr.cast_if_reference();
+				let mut index_expr = self.check_expression(*index_expr).into_cast_ref();
 				let index_type = self.promote_int_literal_into(&mut index_expr, BUILTIN_TYPE_I32);
 				if !self.ast.is_integer(index_type) {
 					self.error(parsed.span, location!())
@@ -284,8 +275,7 @@ impl FunctionTypeChecker<'_> {
 						.build_type_mismatch(index_type, BUILTIN_TYPE_INT_LITERAL);
 				}
 
-				let mut arr_expr = self.check_expression(*arr_expr);
-				arr_expr.cast_if_reference();
+				let arr_expr = self.check_expression(*arr_expr).into_cast_ref();
 				let arr_type = arr_expr.value_type;
 
 				let ty = if let Type::Pointer(inner) = self.ast.get_type(arr_type) {
@@ -307,7 +297,7 @@ impl FunctionTypeChecker<'_> {
 			}
 			parser::ExpressionKind::Cast(into, child) => {
 				let into = self.ast.check_parsed_type(into);
-				let mut child = self.check_expression(*child);
+				let mut child = self.check_expression(*child).into_cast_ref();
 				let from = child.value_type;
 
 				match (self.ast.get_type(from), self.ast.get_type(into)) {
@@ -345,7 +335,6 @@ impl FunctionTypeChecker<'_> {
 						return dummy_expr();
 					}
 				}
-				child.cast_if_reference();
 
 				Expression::new_spanned(into, ExpressionKind::Cast(child.into()), parsed.span)
 			}
@@ -365,7 +354,7 @@ impl FunctionTypeChecker<'_> {
 				)
 			}
 			parser::ExpressionKind::UnaryOperator(Operator::Dereference, child) => {
-				let mut child = self.check_expression(*child);
+				let child = self.check_expression(*child).into_cast_ref();
 				let Type::Pointer(inner) = self.ast.get_type(child.value_type) else {
 					self.error(parsed.span, location!())
 						.message("Dereference on non pointer")
@@ -376,7 +365,6 @@ impl FunctionTypeChecker<'_> {
 						.build();
 					return dummy_expr();
 				};
-				child.cast_if_reference();
 				Expression::new_spanned(
 					inner.add_reference(),
 					ExpressionKind::UnaryOperator(Operator::Dereference, child.into()),
@@ -441,8 +429,7 @@ impl FunctionTypeChecker<'_> {
 						continue;
 					}
 					seen.insert(field_name.clone(), span);
-					let mut expr = self.check_expression(parsed);
-					expr.cast_if_reference();
+					let mut expr = self.check_expression(parsed).into_cast_ref();
 					self.promote_int_literal_into(&mut expr, field.ty);
 					if expr.value_type != field.ty {
 						self.error(span, location!())

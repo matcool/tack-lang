@@ -473,21 +473,6 @@ pub trait HasAST {
 }
 
 impl Expression {
-	/// Turns the expression into a cast into the given type
-	fn replace_with_cast(&mut self, ty: TypeRef) {
-		let mut cast = Expression::new(ty, ExpressionKind::NumberLiteral(0));
-		std::mem::swap(self, &mut cast);
-		// self is now the cast
-		self.kind = ExpressionKind::Cast(cast.into());
-	}
-
-	/// Turns the expression into a cast that removes the reference
-	pub fn cast_if_reference(&mut self) {
-		if self.value_type.reference {
-			self.replace_with_cast(self.value_type.remove_reference());
-		}
-	}
-
 	/// Wraps the expression into a cast that removes the reference
 	pub fn into_cast_ref(self) -> Self {
 		if self.value_type.reference {

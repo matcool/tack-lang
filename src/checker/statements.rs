@@ -32,20 +32,18 @@ impl FunctionTypeChecker<'_> {
 						// TODO: maybe some dummy statement kind for this?
 						return Statement::new(StatementKind::Return(None), parsed.span);
 					};
-					let mut expr = self.check_expression(expr);
+					let mut expr = self.check_expression(expr).into_cast_ref();
 					let ty = self.promote_int_literal_into(&mut expr, self.function.return_type);
 					if ty != self.function.return_type {
 						self.error(expr.span, location!())
 							.message("Expression does not match return type")
 							.build_type_mismatch(expr.value_type, self.function.return_type);
 					}
-					expr.cast_if_reference();
 					Statement::new(StatementKind::Return(Some(expr)), parsed.span)
 				}
 			}
 			parser::StatementKind::If(parsed_scope, condition, else_stmt) => {
-				let mut condition = self.check_expression(condition);
-				condition.cast_if_reference();
+				let condition = self.check_expression(condition).into_cast_ref();
 				if condition.value_type != BUILTIN_TYPE_BOOL {
 					self.error(condition.span, location!())
 						.message("Condition must be boolean")
@@ -64,8 +62,7 @@ impl FunctionTypeChecker<'_> {
 				Statement::new(StatementKind::Block(scope), parsed.span)
 			}
 			parser::StatementKind::While(parsed_scope, condition) => {
-				let mut condition = self.check_expression(condition);
-				condition.cast_if_reference();
+				let condition = self.check_expression(condition).into_cast_ref();
 				if condition.value_type != BUILTIN_TYPE_BOOL {
 					self.error(condition.span, location!())
 						.message("Condition must be boolean")
