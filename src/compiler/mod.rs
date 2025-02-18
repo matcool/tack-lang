@@ -194,8 +194,12 @@ impl Compiler<'_> {
 			ExpressionKind::NumberLiteral(n) => format!("({n})"),
 			ExpressionKind::BoolLiteral(b) => format!("({b})"),
 			ExpressionKind::StringLiteral(str) => {
-				// TODO: properly escape string literal, or just array it
-				format!("((struct str){{{str:?}, {}}})", str.len())
+				format!(
+					"((struct str){{(u8[{}]){{{}}}, {}}})",
+					str.len() + 1, // just hack in the null terminator for now
+					str.bytes().chain([0].into_iter()).join(", "),
+					str.len()
+				)
 			}
 			ExpressionKind::BinaryOperator(Operator::Assign, left, right) => {
 				let left = self.compile_expression(left);
