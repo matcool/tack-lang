@@ -105,5 +105,6 @@ pub fn run<S: AsRef<std::path::Path> + Into<PathBuf> + Clone>(
 	};
 	if !status.success() {
 		eprintln!("Failed to compile");
+		std::process::exit(1);
 	}
 }
