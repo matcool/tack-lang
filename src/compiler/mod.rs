@@ -4,8 +4,8 @@ use itertools::Itertools;
 
 use crate::{
 	ast::{
-		BuiltInType, Expression, ExpressionKind, Function, Scope, Statement, StatementKind,
-		StructType, Type, TypeRef, AST, BUILTIN_TYPE_BOOL,
+		BuiltInType, Expression, ExpressionKind, Function, FunctionKey, Scope, Statement,
+		StatementKind, StructType, Type, TypeRef, AST, BUILTIN_TYPE_BOOL,
 	},
 	lexer::Operator,
 };
@@ -45,13 +45,13 @@ impl Compiler<'_> {
 		}
 
 		let mut function_declarations = String::new();
-		for function in &self.ast.functions {
+		for function in self.ast.functions.values() {
 			function_declarations += &self.compile_function_decl(function);
 			function_declarations += ";\n";
 		}
 
 		let mut functions = String::new();
-		for function in &self.ast.functions {
+		for function in self.ast.functions.values() {
 			if !function.is_external() {
 				functions += &self.compile_function(function);
 			}
@@ -116,7 +116,7 @@ impl Compiler<'_> {
 		output += &format!(
 			"{} {}({args})",
 			self.format_type(function.return_type),
-			function.name
+			self.mangle_function(function.key)
 		);
 
 		output
@@ -307,7 +307,8 @@ impl Compiler<'_> {
 				let index = self.compile_expression(index);
 				format!("(&({arr})[{index}])")
 			}
-			ExpressionKind::Call(func_name, args) => {
+			ExpressionKind::Call(func_key, args) => {
+				let func_name = self.mangle_function(*func_key);
 				let args = args
 					.iter()
 					.map(|child| self.compile_expression(child))
@@ -356,5 +357,16 @@ impl Compiler<'_> {
 			Type::Struct(struct_type) => format!("struct {}", struct_type.name),
 			_ => ty.remove_reference().formatted(self.ast),
 		}
+	}
+
+	fn mangle_function(&mut self, key: FunctionKey) -> String {
+		let function = &self.ast.functions[key];
+		let mut res = String::new();
+		let mut ns = function.parent;
+		while ns != self.ast.global {
+			res = format!("{}${res}", self.ast.namespaces[ns].name);
+			ns = self.ast.namespaces[ns].parent;
+		}
+		res + &function.name
 	}
 }

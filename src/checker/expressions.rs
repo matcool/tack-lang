@@ -374,12 +374,10 @@ impl FunctionTypeChecker<'_> {
 					.into_iter()
 					.map(|e| self.check_expression(e).into_cast_ref())
 					.collect_vec();
-				let Some(calling_function) = self
-					.ast
+				let Some(calling_function) = self.ast.namespaces[self.ast.global]
 					.functions
-					.iter()
-					.find(|f| f.name == func_name)
-					.or_else(|| (func_name == self.function.name).then_some(self.function))
+					.get(&func_name)
+					.and_then(|key| self.ast.functions.get(*key))
 				else {
 					self.error(parsed.span, location!())
 						.message(format!("Function \"{func_name}\" not found"))
@@ -391,7 +389,7 @@ impl FunctionTypeChecker<'_> {
 
 				Expression::new_spanned(
 					calling_function.return_type,
-					ExpressionKind::Call(func_name, call_args),
+					ExpressionKind::Call(calling_function.key, call_args),
 					parsed.span,
 				)
 			}
@@ -471,13 +469,21 @@ impl FunctionTypeChecker<'_> {
 					.map(|e| self.check_expression(e).into_cast_ref())
 					.collect_vec();
 
-				let Type::Struct(_) = self.ast.get_type(struct_type_ref) else {
+				let Type::Struct(struct_type) = self.ast.get_type(struct_type_ref) else {
 					self.error(struct_expr.span, location!())
 						.message("Expected struct")
 						.build();
 					return dummy_expr(parsed.span);
 				};
-				let Some(function) = self.ast.functions.iter().find(|f| f.name == name) else {
+				let struct_namespace = self.ast.namespaces[self.ast.global]
+					.children
+					.get(&struct_type.name)
+					.unwrap();
+				let Some(function) = self.ast.namespaces[*struct_namespace]
+					.functions
+					.get(&name)
+					.and_then(|key| self.ast.functions.get(*key))
+				else {
 					self.error(parsed.span, location!())
 						.message("Unknown method {}")
 						.build();
@@ -489,7 +495,7 @@ impl FunctionTypeChecker<'_> {
 
 				Expression::new_spanned(
 					function.return_type,
-					ExpressionKind::Call(name, args),
+					ExpressionKind::Call(function.key, args),
 					parsed.span,
 				)
 			}

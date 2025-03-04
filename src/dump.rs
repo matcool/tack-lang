@@ -1,7 +1,7 @@
 use crate::ast::{Expression, ExpressionKind, Function, Scope, Statement, StatementKind, AST};
 
 pub fn dump(ast: &AST) {
-	for func in &ast.functions {
+	for func in ast.functions.values() {
 		if !func.attributes.is_c_extern {
 			dump_function(ast, func);
 		}
@@ -86,7 +86,7 @@ fn dump_expression(ast: &AST, expr: &Expression, indent: &str) {
 		ExpressionKind::StringLiteral(s) => format!("StringLiteral({s})"),
 		ExpressionKind::BinaryOperator(op, _, _) => format!("BinaryOperator({op:?})"),
 		ExpressionKind::UnaryOperator(op, _) => format!("UnaryOperator({op:?})"),
-		ExpressionKind::Call(name, _) => format!("Call({name})"),
+		ExpressionKind::Call(key, _) => format!("Call({})", ast.functions[*key].name),
 		ExpressionKind::StructAccess(_, name) => format!("StructAccess({name})"),
 		k => format!("{}", k),
 	};

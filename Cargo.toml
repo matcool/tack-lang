@@ -13,6 +13,7 @@ lyneate = "0.2.1"
 path-slash = "0.2.0"
 strum = "0.27"
 strum_macros = "0.27"
+slotmap = "1.0"
 
 [[bin]]
 name = "tests"

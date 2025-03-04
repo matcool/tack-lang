@@ -6,8 +6,8 @@ use std::{
 
 use crate::{
 	ast::{
-		BuiltInType, Expression, ExpressionKind, Function, HasAST, Scope, StructType, Type,
-		TypeRef, Variable, AST, BUILTIN_TYPE_INT_LITERAL,
+		BuiltInType, Expression, ExpressionKind, Function, HasAST, Namespace, Scope, StructType,
+		Type, TypeRef, Variable, AST, BUILTIN_TYPE_INT_LITERAL,
 	},
 	diagnostics::{ErrorBuilder, ProducesError},
 	lexer::Lexer,
@@ -82,7 +82,7 @@ impl TypeChecker {
 			let imported_path = self
 				.file_path
 				.parent()
-				.unwrap_or_else(|| panic!("invalid path?"))
+				.expect("invalid path?")
 				.join(imported_file);
 
 			let Ok(contents) = std::fs::read_to_string(imported_path.clone()) else {
@@ -101,32 +101,9 @@ impl TypeChecker {
 			let checker = TypeChecker::new(imported_path);
 			let i = asts.len();
 			asts.extend(checker.check(parser).unwrap());
-			let new_ast = &asts[i];
+			let old_ast = &asts[i];
 
-			let clone_type = |new_ast: &mut AST, old_ast: &AST, type_ref: TypeRef| {
-				new_ast.find_type_or_add(old_ast.get_type(type_ref).clone())
-			};
-
-			for function in &new_ast.functions {
-				if function.is_external() {
-					continue;
-				}
-				let mut imported_func = function.clone();
-				imported_func.attributes.is_extern = true;
-				for arg in &mut imported_func.arguments {
-					arg.ty = clone_type(&mut self.ast, new_ast, arg.ty);
-				}
-				imported_func.return_type =
-					clone_type(&mut self.ast, new_ast, imported_func.return_type);
-				self.ast.functions.push(imported_func);
-			}
-
-			// adds structs that arent mentioned in functions
-			for ty in &new_ast.types {
-				if self.ast.find_type(|t| t == &ty).is_none() {
-					self.ast.add_type(ty.clone());
-				}
-			}
+			self.ast.import_ast(old_ast);
 		}
 
 		let mut pending_functions = Vec::new();
@@ -149,27 +126,31 @@ impl TypeChecker {
 				name: parsed_struct.name.clone(),
 				fields,
 			}));
+			let struct_namespace = self
+				.ast
+				.add_namespace(self.ast.global, Namespace::new(parsed_struct.name));
 			for function in parsed_struct.functions {
 				let (function, scope) = self.check_struct_function(function, struct_type_ref);
-				pending_functions.push((self.ast.functions.len(), scope));
-				// TODO: add this to a special namespace or something
-				self.ast.functions.push(function);
+				let key = self.ast.add_function(struct_namespace, function);
+				pending_functions.push((key, scope));
 			}
 		}
 
 		// check functions
 		for function in parser.functions {
 			let (function, scope) = self.check_function(function);
-			pending_functions.push((self.ast.functions.len(), scope));
-			self.ast.functions.push(function);
+			let key = self.ast.add_function(self.ast.global, function);
+			pending_functions.push((key, scope));
 		}
 
 		// actually check function scopes
-		for (i, scope) in pending_functions {
+		for (key, scope) in pending_functions {
 			// cloning here is probably not necessary but oh well!
-			let function = self.ast.functions[i].clone();
+			let function = self.ast.functions.get(key).unwrap().clone();
+
 			if !function.attributes.is_c_extern {
-				self.ast.functions[i] = self.check_function_scope(scope, function);
+				let function = self.check_function_scope(scope, function);
+				self.ast.functions[key] = function;
 			}
 		}
 

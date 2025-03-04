@@ -1,11 +1,13 @@
 use std::{
 	cell::RefCell,
+	collections::HashMap,
 	hash::{Hash, Hasher},
 	path::PathBuf,
 	rc::Rc,
 };
 
 use itertools::Itertools;
+use slotmap::{new_key_type, SlotMap};
 use strum_macros::Display;
 
 use crate::{lexer::Operator, span::Span};
@@ -133,7 +135,7 @@ pub enum ExpressionKind {
 	BinaryOperator(Operator, Box<Expression>, Box<Expression>),
 	UnaryOperator(Operator, Box<Expression>),
 	// TODO: should just use child expression instead of function name
-	Call(String, Vec<Expression>),
+	Call(FunctionKey, Vec<Expression>),
 	Cast(Box<Expression>),
 	StructAccess(Box<Expression>, String),
 	ArrayLiteral(Vec<Expression>),
@@ -279,22 +281,33 @@ pub struct Function {
 	pub return_type: TypeRef,
 	pub scope: Rc<Scope>,
 	pub attributes: FunctionAttributes,
-}
-
-impl Function {
-	pub fn is_external(&self) -> bool {
-		self.attributes.is_extern || self.attributes.is_c_extern
-	}
+	pub key: FunctionKey,
+	pub parent: NamespaceKey,
 }
 
 impl Function {
 	pub fn new(name: String) -> Function {
 		Function {
 			name,
+			..Default::default()
+		}
+	}
+
+	pub fn is_external(&self) -> bool {
+		self.attributes.is_extern || self.attributes.is_c_extern
+	}
+}
+
+impl Default for Function {
+	fn default() -> Self {
+		Self {
+			name: Default::default(),
 			arguments: vec![],
 			return_type: TypeRef::unknown(),
 			scope: Rc::new(Scope::new(None)),
 			attributes: Default::default(),
+			key: Default::default(),
+			parent: Default::default(),
 		}
 	}
 }
@@ -317,18 +330,43 @@ impl Type {
 	}
 }
 
+#[derive(Default, Debug)]
+pub struct Namespace {
+	pub parent: NamespaceKey,
+	pub name: String,
+	pub functions: HashMap<String, FunctionKey>,
+	// pub types: Vec<TypeRef>,
+	pub children: HashMap<String, NamespaceKey>,
+}
+
+impl Namespace {
+	pub fn new(name: String) -> Self {
+		Self {
+			name,
+			..Default::default()
+		}
+	}
+}
+
+new_key_type! {
+	pub struct FunctionKey;
+	pub struct NamespaceKey;
+}
+
 #[derive(Default)]
 #[allow(clippy::upper_case_acronyms)]
 pub struct AST {
-	pub functions: Vec<Function>,
-	pub types: Vec<Type>,
 	pub file_path: PathBuf,
+	pub global: NamespaceKey,
+	// dont feel like breaking the BUILTIN_TYPE_* consts just yet
+	pub types: Vec<Type>,
+	pub functions: SlotMap<FunctionKey, Function>,
+	pub namespaces: SlotMap<NamespaceKey, Namespace>,
 }
 
 pub const BUILTIN_TYPE_I32: TypeRef = TypeRef::new(0);
 pub const BUILTIN_TYPE_U8: TypeRef = TypeRef::new(1);
 pub const BUILTIN_TYPE_BOOL: TypeRef = TypeRef::new(2);
-#[allow(unused)]
 pub const BUILTIN_TYPE_UPTR: TypeRef = TypeRef::new(3);
 pub const BUILTIN_TYPE_VOID: TypeRef = TypeRef::new(4);
 pub const BUILTIN_TYPE_INT_LITERAL: TypeRef = TypeRef::new(5);
@@ -336,9 +374,14 @@ pub const BUILTIN_TYPE_STR: TypeRef = TypeRef::new(7); // 6 is u8*
 
 impl AST {
 	pub fn new(file_path: PathBuf) -> Self {
+		let mut namespaces = SlotMap::with_key();
+		let global = namespaces.insert(Namespace::new("_".into()));
 		let mut ast = Self {
 			file_path,
-			..Default::default()
+			global,
+			types: Vec::new(),
+			functions: SlotMap::with_key(),
+			namespaces,
 		};
 		ast.add_builtin_types();
 		ast.add_builtin_functions();
@@ -363,52 +406,86 @@ impl AST {
 		}));
 	}
 
+	pub fn add_function(&mut self, parent: NamespaceKey, mut function: Function) -> FunctionKey {
+		let name = function.name.clone();
+		function.parent = parent;
+		let key = self.functions.insert_with_key(move |key| {
+			function.key = key;
+			function
+		});
+		let ns = &mut self.namespaces[parent];
+		ns.functions.insert(name, key);
+		key
+	}
+
+	pub fn add_namespace(&mut self, parent: NamespaceKey, mut ns: Namespace) -> NamespaceKey {
+		ns.parent = parent;
+		let name = ns.name.clone();
+		let key = self.namespaces.insert(ns);
+		if let Some(parent) = self.namespaces.get_mut(parent) {
+			parent.children.insert(name, key);
+		}
+		key
+	}
+
 	fn add_builtin_functions(&mut self) {
 		let void_ptr = self.find_type_or_add(Type::Pointer(BUILTIN_TYPE_VOID));
-		self.functions.push(Function {
-			name: "tack_malloc".into(),
-			arguments: vec![Variable::new_builtin("size".into(), BUILTIN_TYPE_UPTR)],
-			return_type: void_ptr,
-			attributes: FunctionAttributes {
-				is_c_extern: true,
+		self.add_function(
+			self.global,
+			Function {
+				name: "tack_malloc".into(),
+				arguments: vec![Variable::new_builtin("size".into(), BUILTIN_TYPE_UPTR)],
+				return_type: void_ptr,
+				attributes: FunctionAttributes {
+					is_c_extern: true,
+					..Default::default()
+				},
 				..Default::default()
 			},
-			scope: Scope::new(None).into(),
-		});
-		self.functions.push(Function {
-			name: "tack_free".into(),
-			arguments: vec![Variable::new_builtin("ptr".into(), void_ptr)],
-			return_type: BUILTIN_TYPE_VOID,
-			attributes: FunctionAttributes {
-				is_c_extern: true,
+		);
+		self.add_function(
+			self.global,
+			Function {
+				name: "tack_free".into(),
+				arguments: vec![Variable::new_builtin("ptr".into(), void_ptr)],
+				return_type: BUILTIN_TYPE_VOID,
+				attributes: FunctionAttributes {
+					is_c_extern: true,
+					..Default::default()
+				},
 				..Default::default()
 			},
-			scope: Scope::new(None).into(),
-		});
-		self.functions.push(Function {
-			name: "tack_memcpy".into(),
-			arguments: vec![
-				Variable::new_builtin("dst".into(), void_ptr),
-				Variable::new_builtin("src".into(), void_ptr),
-				Variable::new_builtin("size".into(), BUILTIN_TYPE_UPTR),
-			],
-			return_type: void_ptr,
-			attributes: FunctionAttributes {
-				is_c_extern: true,
+		);
+		self.add_function(
+			self.global,
+			Function {
+				name: "tack_memcpy".into(),
+				arguments: vec![
+					Variable::new_builtin("dst".into(), void_ptr),
+					Variable::new_builtin("src".into(), void_ptr),
+					Variable::new_builtin("size".into(), BUILTIN_TYPE_UPTR),
+				],
+				return_type: void_ptr,
+				attributes: FunctionAttributes {
+					is_c_extern: true,
+					..Default::default()
+				},
 				..Default::default()
 			},
-			scope: Scope::new(None).into(),
-		});
-		self.functions.push(Function {
-			name: "tack_print".into(),
-			arguments: vec![Variable::new_builtin("str".into(), BUILTIN_TYPE_STR)],
-			return_type: BUILTIN_TYPE_VOID,
-			attributes: FunctionAttributes {
-				is_c_extern: true,
+		);
+		self.add_function(
+			self.global,
+			Function {
+				name: "tack_print".into(),
+				arguments: vec![Variable::new_builtin("str".into(), BUILTIN_TYPE_STR)],
+				return_type: BUILTIN_TYPE_VOID,
+				attributes: FunctionAttributes {
+					is_c_extern: true,
+					..Default::default()
+				},
 				..Default::default()
 			},
-			scope: Scope::new(None).into(),
-		});
+		);
 	}
 
 	pub fn find_type<P: FnMut(&&Type) -> bool>(&self, predicate: P) -> Option<TypeRef> {
@@ -457,6 +534,71 @@ impl AST {
 				| Type::BuiltIn(BuiltInType::U8)
 				| Type::BuiltIn(BuiltInType::UPtr)
 		)
+	}
+
+	/// Imports structs and functions from another ast, marking them as external
+	pub fn import_ast(&mut self, old_ast: &AST) {
+		self.import_namespace(old_ast, &old_ast.namespaces[old_ast.global], self.global);
+
+		// import structs since those arent stored in the namespace yet..
+		for (id, ty) in old_ast.types.iter().enumerate().by_ref() {
+			if !matches!(ty, Type::Struct(_)) {
+				continue;
+			}
+			if self.find_type(|t| t == &ty).is_none() {
+				self.import_type_from(old_ast, TypeRef::new(id));
+			}
+		}
+	}
+
+	fn import_type_from(&mut self, old_ast: &AST, type_ref: TypeRef) -> TypeRef {
+		match old_ast.get_type(type_ref).clone() {
+			k @ Type::BuiltIn(_) => self.find_type_or_add(k),
+			Type::Pointer(type_ref) => {
+				let inner = self.import_type_from(old_ast, type_ref);
+				self.find_type_or_add(Type::Pointer(inner))
+			}
+			Type::Array(type_ref, size) => {
+				let inner = self.import_type_from(old_ast, type_ref);
+				self.find_type_or_add(Type::Array(inner, size))
+			}
+			Type::Struct(mut struct_type) => {
+				for var in &mut struct_type.fields {
+					var.ty = self.import_type_from(old_ast, var.ty);
+				}
+				self.find_type_or_add(Type::Struct(struct_type))
+			}
+		}
+	}
+
+	fn import_namespace_functions(
+		&mut self,
+		old_ast: &AST,
+		old_ns: &Namespace,
+		new_ns: NamespaceKey,
+	) {
+		for function in old_ns.functions.values() {
+			let function = &old_ast.functions[*function];
+			if function.is_external() {
+				continue;
+			}
+			let mut imported_func = function.clone();
+			imported_func.attributes.is_extern = true;
+			for arg in &mut imported_func.arguments {
+				arg.ty = self.import_type_from(old_ast, arg.ty);
+			}
+			imported_func.return_type = self.import_type_from(old_ast, imported_func.return_type);
+			self.add_function(new_ns, imported_func);
+		}
+	}
+
+	fn import_namespace(&mut self, old_ast: &AST, old_ns: &Namespace, new_ns: NamespaceKey) {
+		self.import_namespace_functions(old_ast, old_ns, new_ns);
+		for old_child in old_ns.children.values() {
+			let old_child = &old_ast.namespaces[*old_child];
+			let new_child = self.add_namespace(new_ns, Namespace::new(old_child.name.clone()));
+			self.import_namespace(old_ast, old_child, new_child);
+		}
 	}
 }
 
