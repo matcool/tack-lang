@@ -3,11 +3,7 @@ use std::collections::HashMap;
 use itertools::Itertools;
 
 use crate::{
-	ast::{
-		BuiltInType, Expression, ExpressionKind, HasAST, Type, TypeRef, Variable,
-		BUILTIN_TYPE_BOOL, BUILTIN_TYPE_I32, BUILTIN_TYPE_INT_LITERAL, BUILTIN_TYPE_STR,
-		BUILTIN_TYPE_VOID,
-	},
+	ast::{BuiltInType, Expression, ExpressionKind, HasAST, Type, TypeRef, Variable},
 	diagnostics::ProducesError,
 	lexer::Operator,
 	location,
@@ -21,17 +17,17 @@ impl FunctionTypeChecker<'_> {
 	pub fn check_expression(&mut self, parsed: parser::Expression) -> Expression {
 		match parsed.kind {
 			parser::ExpressionKind::NumberLiteral(value) => Expression::new_spanned(
-				BUILTIN_TYPE_INT_LITERAL,
+				self.ast.builtin.int_literal,
 				ExpressionKind::NumberLiteral(value),
 				parsed.span,
 			),
 			parser::ExpressionKind::BoolLiteral(value) => Expression::new_spanned(
-				BUILTIN_TYPE_BOOL,
+				self.ast.builtin.bool,
 				ExpressionKind::BoolLiteral(value),
 				parsed.span,
 			),
 			parser::ExpressionKind::StringLiteral(value) => Expression::new_spanned(
-				BUILTIN_TYPE_STR,
+				self.ast.builtin.str,
 				ExpressionKind::StringLiteral(value),
 				parsed.span,
 			),
@@ -58,7 +54,7 @@ impl FunctionTypeChecker<'_> {
 				}
 
 				Expression::new_spanned(
-					BUILTIN_TYPE_VOID,
+					self.ast.builtin.void,
 					ExpressionKind::BinaryOperator(Operator::Assign, left.into(), right.into()),
 					parsed.span,
 				)
@@ -74,30 +70,30 @@ impl FunctionTypeChecker<'_> {
 
 				// Boolean operators
 				if matches!(op, Operator::And | Operator::Or)
-					&& (left_ty != BUILTIN_TYPE_BOOL || right_ty != BUILTIN_TYPE_BOOL)
+					&& (left_ty != self.ast.builtin.bool || right_ty != self.ast.builtin.bool)
 				{
-					let which = if left_ty != BUILTIN_TYPE_BOOL {
+					let which = if left_ty != self.ast.builtin.bool {
 						(left.span, left_ty)
 					} else {
 						(right.span, right_ty)
 					};
 					self.error(which.0, location!())
 						.message("Both operands must be bool")
-						.build_type_mismatch(which.1, BUILTIN_TYPE_BOOL);
+						.build_type_mismatch(which.1, self.ast.builtin.bool);
 				}
 
 				// Pointer arithmetic
 				if self.ast.is_pointer(left_ty) {
-					let rhs = self.promote_int_literal_into(&mut right, BUILTIN_TYPE_I32);
+					let rhs = self.promote_int_literal_into(&mut right, self.ast.builtin.i32);
 					if !matches!(op, Operator::Add | Operator::Sub) {
 						self.error(parsed.span, location!())
 							.message("Pointers only support addition and subtraction")
 							.build();
 					}
-					if rhs != BUILTIN_TYPE_I32 {
+					if rhs != self.ast.builtin.i32 {
 						self.error(right.span, location!())
 							.message("Pointer arithmetic must be done with i32")
-							.build_type_mismatch(right.ty, BUILTIN_TYPE_I32);
+							.build_type_mismatch(right.ty, self.ast.builtin.i32);
 					}
 					return Expression::new_spanned(
 						left_ty,
@@ -127,7 +123,7 @@ impl FunctionTypeChecker<'_> {
 					) {
 						self.error(parsed.span, location!())
 							.message("Arithmetic can only be done on integer types")
-							.build_type_mismatch(left_ty, BUILTIN_TYPE_INT_LITERAL);
+							.build_type_mismatch(left_ty, self.ast.builtin.int_literal);
 					}
 				}
 
@@ -137,7 +133,7 @@ impl FunctionTypeChecker<'_> {
 					| Operator::GreaterThan
 					| Operator::GreaterThanEq
 					| Operator::LessThan
-					| Operator::LessThanEq => BUILTIN_TYPE_BOOL,
+					| Operator::LessThanEq => self.ast.builtin.bool,
 					_ => left_ty,
 				};
 				Expression::new_spanned(
@@ -148,10 +144,10 @@ impl FunctionTypeChecker<'_> {
 			}
 			parser::ExpressionKind::UnaryOperator(Operator::Negate, child) => {
 				let child = self.check_expression(*child).into_cast_ref();
-				if child.ty != BUILTIN_TYPE_INT_LITERAL && !self.ast.is_integer(child.ty) {
+				if child.ty != self.ast.builtin.int_literal && !self.ast.is_integer(child.ty) {
 					self.error(parsed.span, location!())
 						.message("Negation must be done on integers")
-						.build_type_mismatch(child.ty, BUILTIN_TYPE_INT_LITERAL);
+						.build_type_mismatch(child.ty, self.ast.builtin.int_literal);
 				}
 				Expression::new_spanned(
 					child.ty,
@@ -266,11 +262,12 @@ impl FunctionTypeChecker<'_> {
 			}
 			parser::ExpressionKind::ArrayIndex(arr_expr, index_expr) => {
 				let mut index_expr = self.check_expression(*index_expr).into_cast_ref();
-				let index_type = self.promote_int_literal_into(&mut index_expr, BUILTIN_TYPE_I32);
+				let index_type =
+					self.promote_int_literal_into(&mut index_expr, self.ast.builtin.i32);
 				if !self.ast.is_integer(index_type) {
 					self.error(parsed.span, location!())
 						.message("Arrays must be indexed with integers")
-						.build_type_mismatch(index_type, BUILTIN_TYPE_INT_LITERAL);
+						.build_type_mismatch(index_type, self.ast.builtin.int_literal);
 				}
 
 				let arr_expr = self.check_expression(*arr_expr).into_cast_ref();

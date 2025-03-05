@@ -1,5 +1,5 @@
 use crate::{
-	ast::{Statement, StatementKind, BUILTIN_TYPE_BOOL, BUILTIN_TYPE_VOID},
+	ast::{Statement, StatementKind},
 	diagnostics::ProducesError,
 	location,
 	parser::{self},
@@ -15,7 +15,7 @@ impl FunctionTypeChecker<'_> {
 				Statement::new(StatementKind::Expression(expr), parsed.span)
 			}
 			parser::StatementKind::Return(expr_opt) => {
-				if self.function.return_type == BUILTIN_TYPE_VOID {
+				if self.function.return_type == self.ast.builtin.void {
 					if let Some(expr) = expr_opt {
 						// TODO: should prob allow it as long as u cast to void
 						// or maybe allow implicit casting to void
@@ -44,10 +44,10 @@ impl FunctionTypeChecker<'_> {
 			}
 			parser::StatementKind::If(parsed_scope, condition, else_stmt) => {
 				let condition = self.check_expression(condition).into_cast_ref();
-				if condition.ty != BUILTIN_TYPE_BOOL {
+				if condition.ty != self.ast.builtin.bool {
 					self.error(condition.span, location!())
 						.message("Condition must be boolean")
-						.build_type_mismatch(condition.ty, BUILTIN_TYPE_BOOL);
+						.build_type_mismatch(condition.ty, self.ast.builtin.bool);
 				}
 				let if_scope = self.check_scope(parsed_scope);
 				let else_stmt = else_stmt.map(|stmt| Box::new(self.check_statement(*stmt)));
@@ -63,10 +63,10 @@ impl FunctionTypeChecker<'_> {
 			}
 			parser::StatementKind::While(parsed_scope, condition) => {
 				let condition = self.check_expression(condition).into_cast_ref();
-				if condition.ty != BUILTIN_TYPE_BOOL {
+				if condition.ty != self.ast.builtin.bool {
 					self.error(condition.span, location!())
 						.message("Condition must be boolean")
-						.build_type_mismatch(condition.ty, BUILTIN_TYPE_BOOL);
+						.build_type_mismatch(condition.ty, self.ast.builtin.bool);
 				}
 				let scope = self.check_scope(parsed_scope);
 				Statement::new(StatementKind::While(scope, condition), parsed.span)

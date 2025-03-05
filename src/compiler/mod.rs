@@ -5,7 +5,7 @@ use itertools::Itertools;
 use crate::{
 	ast::{
 		BuiltInType, Expression, ExpressionKind, Function, FunctionKey, Scope, Statement,
-		StatementKind, StructType, Type, TypeRef, AST, BUILTIN_TYPE_BOOL,
+		StatementKind, StructType, Type, TypeRef, AST,
 	},
 	lexer::Operator,
 };
@@ -38,7 +38,7 @@ impl Compiler<'_> {
 	pub fn compile(mut self) -> String {
 		let header = "#include <tack_runtime.h>\n";
 
-		for ty in &self.ast.types {
+		for ty in self.ast.types.values() {
 			if let Type::Struct(struct_type) = ty {
 				self.add_struct(struct_type);
 			}
@@ -172,7 +172,7 @@ impl Compiler<'_> {
 				}
 			}
 			StatementKind::While(scope, cond_expr) => {
-				let condition_var = self.allocate_value(BUILTIN_TYPE_BOOL);
+				let condition_var = self.allocate_value(self.ast.builtin.bool);
 				let cond = self.compile_expression(cond_expr);
 				self.body += &format!("{condition_var} = {cond};\n");
 				self.body += &format!("while ({condition_var}) {{\n");

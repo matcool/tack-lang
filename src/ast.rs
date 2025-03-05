@@ -6,8 +6,7 @@ use std::{
 	rc::Rc,
 };
 
-use itertools::Itertools;
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{new_key_type, Key, SlotMap};
 use strum_macros::Display;
 
 use crate::{lexer::Operator, span::Span};
@@ -45,36 +44,36 @@ pub enum Type {
 
 #[derive(Debug, Clone, Copy)]
 pub struct TypeRef {
-	pub id: usize,
+	pub key: TypeKey,
 	pub reference: bool,
 }
 
 impl TypeRef {
-	pub const fn new(id: usize) -> Self {
+	pub const fn new(key: TypeKey) -> Self {
 		Self {
-			id,
+			key,
 			reference: false,
 		}
 	}
 
 	pub fn unknown() -> Self {
-		Self::new(usize::MAX)
+		TypeKey::null().into()
 	}
 
 	pub fn is_unknown(&self) -> bool {
-		self.id == usize::MAX
+		self.key.is_null()
 	}
 
 	pub fn add_reference(&self) -> Self {
 		Self {
-			id: self.id,
+			key: self.key,
 			reference: true,
 		}
 	}
 
 	pub fn remove_reference(&self) -> Self {
 		Self {
-			id: self.id,
+			key: self.key,
 			reference: false,
 		}
 	}
@@ -92,19 +91,31 @@ impl TypeRef {
 	}
 }
 
+impl Default for TypeRef {
+	fn default() -> Self {
+		Self::unknown()
+	}
+}
+
 impl PartialEq for TypeRef {
 	fn eq(&self, other: &TypeRef) -> bool {
-		self.id == other.id
+		self.key == other.key
 	}
 }
 
 impl Hash for TypeRef {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.id.hash(state);
+		self.key.hash(state);
 	}
 }
 
 impl Eq for TypeRef {}
+
+impl From<TypeKey> for TypeRef {
+	fn from(key: TypeKey) -> Self {
+		TypeRef::new(key)
+	}
+}
 
 #[derive(Debug, Clone)]
 pub struct Variable {
@@ -168,6 +179,19 @@ impl Expression {
 			ExpressionKind::ArrayIndex(a, b) => [&**a, &**b].into(),
 			ExpressionKind::StructLiteral(values) => values.iter().map(|x| &x.1).collect(),
 			_ => [].into(),
+		}
+	}
+	/// Wraps the expression into a cast that removes the reference
+	pub fn into_cast_ref(self) -> Self {
+		if self.ty.reference {
+			let span = self.span;
+			Expression::new_spanned(
+				self.ty.remove_reference(),
+				ExpressionKind::Cast(self.into()),
+				span,
+			)
+		} else {
+			self
 		}
 	}
 }
@@ -335,7 +359,6 @@ pub struct Namespace {
 	pub parent: NamespaceKey,
 	pub name: String,
 	pub functions: HashMap<String, FunctionKey>,
-	// pub types: Vec<TypeRef>,
 	pub children: HashMap<String, NamespaceKey>,
 }
 
@@ -351,6 +374,18 @@ impl Namespace {
 new_key_type! {
 	pub struct FunctionKey;
 	pub struct NamespaceKey;
+	pub struct TypeKey;
+}
+
+#[derive(Default)]
+pub struct BuiltinTypeRefs {
+	pub i32: TypeRef,
+	pub u8: TypeRef,
+	pub bool: TypeRef,
+	pub uptr: TypeRef,
+	pub void: TypeRef,
+	pub int_literal: TypeRef,
+	pub str: TypeRef,
 }
 
 #[derive(Default)]
@@ -358,19 +393,11 @@ new_key_type! {
 pub struct AST {
 	pub file_path: PathBuf,
 	pub global: NamespaceKey,
-	// dont feel like breaking the BUILTIN_TYPE_* consts just yet
-	pub types: Vec<Type>,
+	pub types: SlotMap<TypeKey, Type>,
 	pub functions: SlotMap<FunctionKey, Function>,
 	pub namespaces: SlotMap<NamespaceKey, Namespace>,
+	pub builtin: BuiltinTypeRefs,
 }
-
-pub const BUILTIN_TYPE_I32: TypeRef = TypeRef::new(0);
-pub const BUILTIN_TYPE_U8: TypeRef = TypeRef::new(1);
-pub const BUILTIN_TYPE_BOOL: TypeRef = TypeRef::new(2);
-pub const BUILTIN_TYPE_UPTR: TypeRef = TypeRef::new(3);
-pub const BUILTIN_TYPE_VOID: TypeRef = TypeRef::new(4);
-pub const BUILTIN_TYPE_INT_LITERAL: TypeRef = TypeRef::new(5);
-pub const BUILTIN_TYPE_STR: TypeRef = TypeRef::new(7); // 6 is u8*
 
 impl AST {
 	pub fn new(file_path: PathBuf) -> Self {
@@ -379,9 +406,10 @@ impl AST {
 		let mut ast = Self {
 			file_path,
 			global,
-			types: Vec::new(),
+			types: SlotMap::with_key(),
 			functions: SlotMap::with_key(),
 			namespaces,
+			builtin: Default::default(),
 		};
 		ast.add_builtin_types();
 		ast.add_builtin_functions();
@@ -389,19 +417,19 @@ impl AST {
 	}
 
 	fn add_builtin_types(&mut self) {
-		self.add_type(Type::BuiltIn(BuiltInType::I32));
-		self.add_type(Type::BuiltIn(BuiltInType::U8));
-		self.add_type(Type::BuiltIn(BuiltInType::Bool));
-		self.add_type(Type::BuiltIn(BuiltInType::UPtr));
-		self.add_type(Type::BuiltIn(BuiltInType::Void));
-		self.add_type(Type::BuiltIn(BuiltInType::IntLiteral));
+		self.builtin.i32 = self.add_type(Type::BuiltIn(BuiltInType::I32));
+		self.builtin.u8 = self.add_type(Type::BuiltIn(BuiltInType::U8));
+		self.builtin.bool = self.add_type(Type::BuiltIn(BuiltInType::Bool));
+		self.builtin.uptr = self.add_type(Type::BuiltIn(BuiltInType::UPtr));
+		self.builtin.void = self.add_type(Type::BuiltIn(BuiltInType::Void));
+		self.builtin.int_literal = self.add_type(Type::BuiltIn(BuiltInType::IntLiteral));
 
-		let u8_ptr = self.find_type_or_add(Type::Pointer(BUILTIN_TYPE_U8));
-		self.add_type(Type::Struct(StructType {
+		let u8_ptr = self.find_type_or_add(Type::Pointer(self.builtin.u8));
+		self.builtin.str = self.add_type(Type::Struct(StructType {
 			name: "str".into(),
 			fields: vec![
 				Variable::new_builtin("data".into(), u8_ptr),
-				Variable::new_builtin("size".into(), BUILTIN_TYPE_I32),
+				Variable::new_builtin("size".into(), self.builtin.i32),
 			],
 		}));
 	}
@@ -429,12 +457,12 @@ impl AST {
 	}
 
 	fn add_builtin_functions(&mut self) {
-		let void_ptr = self.find_type_or_add(Type::Pointer(BUILTIN_TYPE_VOID));
+		let void_ptr = self.find_type_or_add(Type::Pointer(self.builtin.void));
 		self.add_function(
 			self.global,
 			Function {
 				name: "tack_malloc".into(),
-				arguments: vec![Variable::new_builtin("size".into(), BUILTIN_TYPE_UPTR)],
+				arguments: vec![Variable::new_builtin("size".into(), self.builtin.uptr)],
 				return_type: void_ptr,
 				attributes: FunctionAttributes {
 					is_c_extern: true,
@@ -448,7 +476,7 @@ impl AST {
 			Function {
 				name: "tack_free".into(),
 				arguments: vec![Variable::new_builtin("ptr".into(), void_ptr)],
-				return_type: BUILTIN_TYPE_VOID,
+				return_type: self.builtin.void,
 				attributes: FunctionAttributes {
 					is_c_extern: true,
 					..Default::default()
@@ -463,7 +491,7 @@ impl AST {
 				arguments: vec![
 					Variable::new_builtin("dst".into(), void_ptr),
 					Variable::new_builtin("src".into(), void_ptr),
-					Variable::new_builtin("size".into(), BUILTIN_TYPE_UPTR),
+					Variable::new_builtin("size".into(), self.builtin.uptr),
 				],
 				return_type: void_ptr,
 				attributes: FunctionAttributes {
@@ -477,8 +505,8 @@ impl AST {
 			self.global,
 			Function {
 				name: "tack_print".into(),
-				arguments: vec![Variable::new_builtin("str".into(), BUILTIN_TYPE_STR)],
-				return_type: BUILTIN_TYPE_VOID,
+				arguments: vec![Variable::new_builtin("str".into(), self.builtin.str)],
+				return_type: self.builtin.void,
 				attributes: FunctionAttributes {
 					is_c_extern: true,
 					..Default::default()
@@ -488,11 +516,11 @@ impl AST {
 		);
 	}
 
-	pub fn find_type<P: FnMut(&&Type) -> bool>(&self, predicate: P) -> Option<TypeRef> {
+	pub fn find_type<P: FnMut(&&Type) -> bool>(&self, mut predicate: P) -> Option<TypeRef> {
 		self.types
 			.iter()
-			.find_position(predicate)
-			.map(|(id, _)| TypeRef::new(id))
+			.find(move |(_, v)| predicate(v))
+			.map(|(key, _)| key.into())
 	}
 
 	pub fn find_type_or_add(&mut self, ty: Type) -> TypeRef {
@@ -505,13 +533,12 @@ impl AST {
 	}
 
 	pub fn add_type(&mut self, ty: Type) -> TypeRef {
-		self.types.push(ty);
-		TypeRef::new(self.types.len() - 1)
+		self.types.insert(ty).into()
 	}
 
 	pub fn get_type(&self, type_ref: TypeRef) -> &Type {
 		self.types
-			.get(type_ref.id)
+			.get(type_ref.key)
 			.expect("invalid type id passed into get_type")
 	}
 
@@ -541,12 +568,12 @@ impl AST {
 		self.import_namespace(old_ast, &old_ast.namespaces[old_ast.global], self.global);
 
 		// import structs since those arent stored in the namespace yet..
-		for (id, ty) in old_ast.types.iter().enumerate().by_ref() {
+		for (key, ty) in old_ast.types.iter().by_ref() {
 			if !matches!(ty, Type::Struct(_)) {
 				continue;
 			}
 			if self.find_type(|t| t == &ty).is_none() {
-				self.import_type_from(old_ast, TypeRef::new(id));
+				self.import_type_from(old_ast, key.into());
 			}
 		}
 	}
@@ -607,21 +634,5 @@ pub trait HasAST {
 
 	fn format_type(&self, ty: TypeRef) -> String {
 		ty.formatted(self.ast())
-	}
-}
-
-impl Expression {
-	/// Wraps the expression into a cast that removes the reference
-	pub fn into_cast_ref(self) -> Self {
-		if self.ty.reference {
-			let span = self.span;
-			Expression::new_spanned(
-				self.ty.remove_reference(),
-				ExpressionKind::Cast(self.into()),
-				span,
-			)
-		} else {
-			self
-		}
 	}
 }

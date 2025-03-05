@@ -7,7 +7,7 @@ use std::{
 use crate::{
 	ast::{
 		BuiltInType, Expression, ExpressionKind, Function, HasAST, Namespace, Scope, StructType,
-		Type, TypeRef, Variable, AST, BUILTIN_TYPE_INT_LITERAL,
+		Type, TypeRef, Variable, AST,
 	},
 	diagnostics::{ErrorBuilder, ProducesError},
 	lexer::Lexer,
@@ -274,7 +274,7 @@ impl FunctionTypeChecker<'_> {
 	}
 
 	fn promote_int_literal_into(&self, expression: &mut Expression, type_ref: TypeRef) -> TypeRef {
-		if expression.ty != BUILTIN_TYPE_INT_LITERAL {
+		if expression.ty != self.ast.builtin.int_literal {
 			return expression.ty;
 		}
 		let target_type = self.ast.get_type(type_ref);
