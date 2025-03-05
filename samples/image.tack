@@ -1,28 +1,18 @@
 // generates a qoi image
 
 fn print_num(num: i32) {
-	let buffer: u8[16];
-
-	let start: u8* = &buffer[16];
-	let size: i32 = 0;
-
-	// no do-while loops so..
-	let first: bool = true;
-
-	while num != 0 || first {
-		first = false;
-		start = start - 1;
-		*start = (0x30 + (num % 10)) as u8;
-		num = num / 10;
-		size = size + 1;
+	if (num < 10) {
+		let char: u8 = 0x30 + num as u8;
+		tack_print(str {
+			data: &char,
+			size: 1,
+		});
+	} else {
+		print_num(num / 10);
+		print_num(num % 10);
 	}
-
-	tack_print(str {
-		data: start,
-		size: size,
-	});
-	tack_print("\n");
 }
+fn println_num(num: i32) { print_num(num); tack_print("\n"); }
 
 @c_extern fn fopen(path: u8*, mode: u8*): void*;
 @c_extern fn fwrite(buffer: u8*, size: uptr, count: uptr, file: void*): uptr;
@@ -227,12 +217,12 @@ fn save_image(name: str, pixels: i32*, width: i32, height: i32) {
 	file.close();
 
 	tack_print("Total counts\n");
-	tack_print("Total RUN: "); print_num(total_run);
-	tack_print("Total INDEX: "); print_num(total_index);
-	tack_print("Total DIFF: "); print_num(total_diff);
-	tack_print("Total LUMA: "); print_num(total_luma);
-	tack_print("Total RGB: "); print_num(total_rgb);
-	tack_print("Total RGBA: "); print_num(total_rgba);
+	tack_print("Total RUN: "); println_num(total_run);
+	tack_print("Total INDEX: "); println_num(total_index);
+	tack_print("Total DIFF: "); println_num(total_diff);
+	tack_print("Total LUMA: "); println_num(total_luma);
+	tack_print("Total RGB: "); println_num(total_rgb);
+	tack_print("Total RGBA: "); println_num(total_rgba);
 }
 
 fn make_color(r: u8, g: u8, b: u8): i32 {
