@@ -1,0 +1,5 @@
+// This file is skipped as it doesn't test anything on its own
+
+fn add(x: i32, y: i32): i32 {
+	return x + y;
+}

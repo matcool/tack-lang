@@ -1,0 +1,7 @@
+// returns 3
+
+import "_add.tack";
+
+fn main(): i32 {
+	return add(1, 2);
+}

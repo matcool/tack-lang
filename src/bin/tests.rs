@@ -40,19 +40,19 @@ fn run_test(path: &Path, binary_path: &Path) {
 	let code = out.status.code().unwrap();
 	if !out.stdout.is_empty() {
 		print!(
-			" {}",
+			"{} ",
 			format!("{:?}", String::from_utf8_lossy(&out.stdout)).bright_blue()
 		);
 	}
 	if code == 11 || code < 0 {
-		print!(" {}", "SEGFAULT".bright_red().italic());
+		print!("{} ", "SEGFAULT".bright_red().italic());
 	}
 	if let Some(expected_code) = expected_code {
 		if expected_code == code {
-			print!("\r{} ", "[ OK ]".bright_green());
+			print!("\r{}", "[ OK ]".bright_green());
 		} else {
 			print!(
-				" {}",
+				"{} ",
 				format!("(expected {expected_code})")
 					.bright_black()
 					.italic()
@@ -77,15 +77,20 @@ fn main() {
 			if folder.path().is_dir() && folder.file_name() != "build" {
 				for file in std::fs::read_dir(folder.path()).unwrap() {
 					let file = file.unwrap();
+					let file_name = file.file_name().into_string().unwrap();
+					// hack to allow for tests that import other files
+					if file_name.starts_with("_") {
+						continue;
+					}
+
 					print!(
-						"{} {}",
+						"{} {} ",
 						"[....]".bright_black(),
 						file.path().to_slash().unwrap()
 					);
 					_ = std::io::stdout().flush();
-					let file_name = file.file_name().into_string().unwrap();
 					if !file_name.ends_with(".tack") {
-						println!(" - Skipping unknown file in test folder");
+						println!("- Skipping unknown file in test folder");
 						continue;
 					}
 
