@@ -371,10 +371,12 @@ impl FunctionTypeChecker<'_> {
 					.into_iter()
 					.map(|e| self.check_expression(e).into_cast_ref())
 					.collect_vec();
-				let Some(calling_function) = self.ast.namespaces[self.ast.global]
+				let Some(calling_function) = self
+					.ast
+					.get_namespace(self.ast.global)
 					.functions
 					.get(&func_name)
-					.and_then(|key| self.ast.functions.get(*key))
+					.map(|key| self.ast.get_function(*key))
 				else {
 					self.error(parsed.span, location!())
 						.message(format!("Function \"{func_name}\" not found"))
@@ -472,14 +474,18 @@ impl FunctionTypeChecker<'_> {
 						.build();
 					return dummy_expr(parsed.span);
 				};
-				let struct_namespace = self.ast.namespaces[self.ast.global]
+				let struct_namespace = self
+					.ast
+					.get_namespace(self.ast.global)
 					.children
 					.get(&struct_type.name)
 					.unwrap();
-				let Some(function) = self.ast.namespaces[*struct_namespace]
+				let Some(function) = self
+					.ast
+					.get_namespace(*struct_namespace)
 					.functions
 					.get(&name)
-					.and_then(|key| self.ast.functions.get(*key))
+					.map(|key| self.ast.get_function(*key))
 				else {
 					self.error(parsed.span, location!())
 						.message("Unknown method {}")

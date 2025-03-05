@@ -146,11 +146,11 @@ impl TypeChecker {
 		// actually check function scopes
 		for (key, scope) in pending_functions {
 			// cloning here is probably not necessary but oh well!
-			let function = self.ast.functions.get(key).unwrap().clone();
+			let function = self.ast.get_function(key);
 
 			if !function.attributes.is_c_extern {
-				let function = self.check_function_scope(scope, function);
-				self.ast.functions[key] = function;
+				let function = self.check_function_scope(scope, function.clone());
+				self.ast.set_function(key, function);
 			}
 		}
 

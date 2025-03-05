@@ -38,20 +38,18 @@ impl Compiler<'_> {
 	pub fn compile(mut self) -> String {
 		let header = "#include <tack_runtime.h>\n";
 
-		for ty in self.ast.types.values() {
-			if let Type::Struct(struct_type) = ty {
-				self.add_struct(struct_type);
-			}
+		for struct_type in self.ast.iter_structs() {
+			self.add_struct(struct_type);
 		}
 
 		let mut function_declarations = String::new();
-		for function in self.ast.functions.values() {
+		for function in self.ast.iter_functions() {
 			function_declarations += &self.compile_function_decl(function);
 			function_declarations += ";\n";
 		}
 
 		let mut functions = String::new();
-		for function in self.ast.functions.values() {
+		for function in self.ast.iter_functions() {
 			if !function.is_external() {
 				functions += &self.compile_function(function);
 			}
@@ -360,12 +358,12 @@ impl Compiler<'_> {
 	}
 
 	fn mangle_function(&mut self, key: FunctionKey) -> String {
-		let function = &self.ast.functions[key];
+		let function = &self.ast.get_function(key);
 		let mut res = String::new();
 		let mut ns = function.parent;
 		while ns != self.ast.global {
-			res = format!("{}${res}", self.ast.namespaces[ns].name);
-			ns = self.ast.namespaces[ns].parent;
+			res = format!("{}${res}", self.ast.get_namespace(ns).name);
+			ns = self.ast.get_namespace(ns).parent;
 		}
 		res + &function.name
 	}

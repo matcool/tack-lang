@@ -168,17 +168,22 @@ impl Expression {
 	pub fn new_spanned(ty: TypeRef, kind: ExpressionKind, span: Span) -> Self {
 		Self { kind, ty, span }
 	}
-	pub fn list_children(&self) -> Box<[&Expression]> {
+	pub fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+		// im sorry
 		match &self.kind {
-			ExpressionKind::BinaryOperator(_, a, b) => [&**a, &**b].into(),
-			ExpressionKind::UnaryOperator(_, a) => [&**a].into(),
-			ExpressionKind::Call(_, args) => args.iter().collect(),
-			ExpressionKind::Cast(a) => [&**a].into(),
-			ExpressionKind::StructAccess(a, _) => [&**a].into(),
-			ExpressionKind::ArrayLiteral(values) => values.iter().collect(),
-			ExpressionKind::ArrayIndex(a, b) => [&**a, &**b].into(),
-			ExpressionKind::StructLiteral(values) => values.iter().map(|x| &x.1).collect(),
-			_ => [].into(),
+			ExpressionKind::BinaryOperator(_, a, b) => Box::new([&**a, &**b].into_iter()),
+			ExpressionKind::UnaryOperator(_, a) => Box::new([&**a].into_iter()),
+			ExpressionKind::Call(_, args) => Box::new(args.iter()),
+			ExpressionKind::Cast(a) => Box::new([&**a].into_iter()),
+			ExpressionKind::StructAccess(a, _) => Box::new([&**a].into_iter()),
+			ExpressionKind::ArrayLiteral(values) => Box::new(values.iter()),
+			ExpressionKind::ArrayIndex(a, b) => Box::new([&**a, &**b].into_iter()),
+			ExpressionKind::StructLiteral(values) => Box::new(values.iter().map(|x| &x.1)),
+			ExpressionKind::NumberLiteral(_)
+			| ExpressionKind::BoolLiteral(_)
+			| ExpressionKind::StringLiteral(_)
+			| ExpressionKind::Declaration(_)
+			| ExpressionKind::Identifier(_) => Box::new([].into_iter()),
 		}
 	}
 	/// Wraps the expression into a cast that removes the reference
@@ -393,10 +398,10 @@ pub struct BuiltinTypeRefs {
 pub struct AST {
 	pub file_path: PathBuf,
 	pub global: NamespaceKey,
-	pub types: SlotMap<TypeKey, Type>,
-	pub functions: SlotMap<FunctionKey, Function>,
-	pub namespaces: SlotMap<NamespaceKey, Namespace>,
 	pub builtin: BuiltinTypeRefs,
+	types: SlotMap<TypeKey, Type>,
+	functions: SlotMap<FunctionKey, Function>,
+	namespaces: SlotMap<NamespaceKey, Namespace>,
 }
 
 impl AST {
@@ -446,6 +451,20 @@ impl AST {
 		key
 	}
 
+	pub fn get_function(&self, key: FunctionKey) -> &Function {
+		self.functions
+			.get(key)
+			.expect("Tried to get missing function, internal error!")
+	}
+
+	pub fn set_function(&mut self, key: FunctionKey, function: Function) {
+		self.functions[key] = function;
+	}
+
+	pub fn iter_functions(&self) -> impl Iterator<Item = &Function> {
+		self.functions.values()
+	}
+
 	pub fn add_namespace(&mut self, parent: NamespaceKey, mut ns: Namespace) -> NamespaceKey {
 		ns.parent = parent;
 		let name = ns.name.clone();
@@ -454,6 +473,12 @@ impl AST {
 			parent.children.insert(name, key);
 		}
 		key
+	}
+
+	pub fn get_namespace(&self, key: NamespaceKey) -> &Namespace {
+		self.namespaces
+			.get(key)
+			.expect("Tried to get missing namespace, internal error!")
 	}
 
 	fn add_builtin_functions(&mut self) {
@@ -561,6 +586,13 @@ impl AST {
 				| Type::BuiltIn(BuiltInType::U8)
 				| Type::BuiltIn(BuiltInType::UPtr)
 		)
+	}
+
+	pub fn iter_structs(&self) -> impl Iterator<Item = &StructType> {
+		self.types.values().filter_map(|s| match s {
+			Type::Struct(s) => Some(s),
+			_ => None,
+		})
 	}
 
 	/// Imports structs and functions from another ast, marking them as external
