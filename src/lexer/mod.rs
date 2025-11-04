@@ -72,10 +72,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 					self.next()?;
 					Operator::GreaterThanEq
 				}
-				_ => {
-					self.next()?;
-					Operator::GreaterThan
-				}
+				_ => Operator::GreaterThan,
 			}),
 			'<' => TokenKind::Operator(match self.peek()? {
 				'<' => {
@@ -86,10 +83,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 					self.next()?;
 					Operator::LessThanEq
 				}
-				_ => {
-					self.next()?;
-					Operator::LessThan
-				}
+				_ => Operator::LessThan,
 			}),
 			'=' => {
 				if self.peek()? == '=' {
@@ -134,7 +128,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 			}
 			'0'..='9' => {
 				if ch == '0' && self.peek().map(|c| c == 'x').unwrap_or(false) {
-					self.next();
+					self.next()?;
 					let number: String =
 						self.peeking_take_while(|c| c.is_ascii_hexdigit()).collect();
 
